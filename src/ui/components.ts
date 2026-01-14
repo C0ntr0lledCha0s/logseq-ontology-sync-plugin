@@ -3,6 +3,8 @@
  * Provides reusable UI components for the plugin
  */
 
+import '@logseq/libs'
+
 /**
  * Show a notification message
  */

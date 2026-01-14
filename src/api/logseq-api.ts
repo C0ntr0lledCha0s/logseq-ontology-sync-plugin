@@ -3,6 +3,8 @@
  * Provides type-safe wrappers around Logseq API calls
  */
 
+import '@logseq/libs'
+
 export interface BlockEntity {
   uuid: string
   content: string

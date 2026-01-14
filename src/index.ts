@@ -3,7 +3,7 @@ import '@logseq/libs'
 const pluginId = 'logseq-ontology-sync'
 
 async function main() {
-  console.log(`[${pluginId}] Plugin loaded`)
+  console.info(`[${pluginId}] Plugin loaded`)
 
   // Register plugin settings
   logseq.useSettingsSchema([
