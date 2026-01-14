@@ -130,21 +130,21 @@ export interface ClassEntity {
 // ============================================================================
 
 /**
- * Operation types in a transaction
+ * Operation types in a transaction (camelCase for internal use)
  */
 export type TransactionOperationType =
-  | 'create-property'
-  | 'update-property'
-  | 'delete-property'
-  | 'create-class'
-  | 'update-class'
-  | 'delete-class'
-  | 'create-page'
-  | 'update-page'
-  | 'delete-page'
-  | 'create-block'
-  | 'update-block'
-  | 'delete-block'
+  | 'createProperty'
+  | 'updateProperty'
+  | 'deleteProperty'
+  | 'createClass'
+  | 'updateClass'
+  | 'deleteClass'
+  | 'createPage'
+  | 'updatePage'
+  | 'deletePage'
+  | 'createBlock'
+  | 'updateBlock'
+  | 'deleteBlock'
 
 /**
  * Single operation within a transaction
@@ -152,8 +152,10 @@ export type TransactionOperationType =
 export interface TransactionOperation {
   /** Type of operation */
   type: TransactionOperationType
+  /** Entity ID for update/delete operations */
+  id?: string
   /** Target entity ID or name */
-  target: string | number
+  target?: string | number
   /** Data for the operation */
   data?: Record<string, unknown>
   /** Original state for rollback */
@@ -163,7 +165,23 @@ export interface TransactionOperation {
 /**
  * Transaction state
  */
-export type TransactionState = 'pending' | 'committed' | 'rolled-back' | 'failed'
+export type TransactionState = 'pending' | 'committed' | 'rolled-back' | 'failed' | 'rolledback'
+
+/**
+ * Transaction interface for atomic operations
+ */
+export interface Transaction {
+  /** Unique transaction ID */
+  id: string
+  /** Operations in this transaction */
+  operations: TransactionOperation[]
+  /** Current transaction status */
+  status: TransactionState
+  /** When the transaction started */
+  startedAt: string
+  /** When the transaction completed */
+  completedAt?: string
+}
 
 /**
  * Transaction result

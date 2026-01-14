@@ -1,13 +1,50 @@
-import { describe, test, expect, beforeEach } from 'bun:test'
+import { describe, test, expect, beforeEach, mock } from 'bun:test'
 import { LogseqOntologyAPI } from '../src/api/ontology-api'
 import { buildFilterQuery } from '../src/api/queries'
 import type { PropertyDefinition, ClassDefinition } from '../src/api/types'
+
+// Mock the logseq global
+const mockLogseq = {
+  Editor: {
+    createPage: mock(async (name: string, properties: Record<string, unknown>) => ({
+      id: Date.now(),
+      uuid: crypto.randomUUID(),
+      name,
+      originalName: name,
+      properties,
+    })),
+    getPage: mock(async (name: string) => ({
+      id: Date.now(),
+      uuid: crypto.randomUUID(),
+      name,
+      originalName: name,
+    })),
+    deletePage: mock(async () => undefined),
+    getPageBlocksTree: mock(async () => [
+      { uuid: crypto.randomUUID(), content: '' },
+    ]),
+    upsertBlockProperty: mock(async () => undefined),
+  },
+  DB: {
+    datascriptQuery: mock(async () => []),
+  },
+}
+
+// Set global logseq
+;(globalThis as Record<string, unknown>).logseq = mockLogseq
 
 describe('LogseqOntologyAPI', () => {
   let api: LogseqOntologyAPI
 
   beforeEach(() => {
     api = new LogseqOntologyAPI()
+    // Reset mocks before each test
+    mockLogseq.Editor.createPage.mockClear()
+    mockLogseq.Editor.getPage.mockClear()
+    mockLogseq.Editor.deletePage.mockClear()
+    mockLogseq.Editor.getPageBlocksTree.mockClear()
+    mockLogseq.Editor.upsertBlockProperty.mockClear()
+    mockLogseq.DB.datascriptQuery.mockClear()
   })
 
   describe('Property Operations', () => {

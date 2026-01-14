@@ -4,17 +4,40 @@
  */
 
 import { logger } from '../utils/logger'
+import { executeQuery, QUERY_ALL_PROPERTIES, QUERY_ALL_CLASSES } from './queries'
 import type {
   PropertyDefinition,
   PropertyEntity,
+  PropertyValueType,
+  PropertyCardinality,
   ClassDefinition,
   ClassEntity,
   Transaction,
   TransactionOperation,
-  APIError,
-  ProgressCallback,
-  BatchResult,
 } from './types'
+
+/**
+ * Progress callback for batch operations
+ */
+type ProgressCallback = (progress: { current: number; total: number; percentage: number }) => void
+
+/**
+ * Simple batch result for internal use
+ */
+interface SimpleBatchResult {
+  total: number
+  succeeded: number
+  failed: number
+  errors: Array<{ index: number; error: string }>
+}
+
+/**
+ * API error type for internal use
+ */
+interface APIError extends Error {
+  code: string
+  details?: Record<string, unknown>
+}
 
 /**
  * Logseq Ontology API class
@@ -30,17 +53,43 @@ export class LogseqOntologyAPI {
     logger.debug('Creating property', { name: def.name })
 
     try {
-      // In real implementation, this would call logseq.Editor.createPage
-      // with property-specific configuration
+      // Normalize property name to kebab-case for Logseq
+      const normalizedName = def.name.toLowerCase().replace(/\s+/g, '-')
+
+      // Build page properties for the property page
+      const pageProperties: Record<string, unknown> = {
+        'block/type': 'property',
+        'property/schema-type': def.type,
+        'property/cardinality': def.cardinality,
+      }
+
+      if (def.description) pageProperties['description'] = def.description
+      if (def.title) pageProperties['title'] = def.title
+      if (def.hide !== undefined) pageProperties['property/hide?'] = def.hide
+      if (def.schemaVersion) pageProperties['schema-version'] = def.schemaVersion
+      if (def.classes && def.classes.length > 0) {
+        pageProperties['property/classes'] = def.classes
+      }
+
+      // Create the property page in Logseq
+      const page = await logseq.Editor.createPage(normalizedName, pageProperties, {
+        redirect: false,
+      })
+
+      if (!page) {
+        throw new Error(`Failed to create property page: ${normalizedName}`)
+      }
+
       const entity: PropertyEntity = {
-        id: Date.now(),
-        uuid: crypto.randomUUID(),
-        name: def.name,
-        originalName: def.title || def.name,
+        id: page.id as number,
+        uuid: page.uuid,
+        name: normalizedName,
+        originalName: page.originalName || def.title || def.name,
         type: def.type,
         cardinality: def.cardinality,
-        hide: def.hide,
+        hide: def.hide ?? false,
         schemaVersion: def.schemaVersion || 1,
+        classes: def.classes || [],
       }
 
       logger.info('Property created', { name: def.name, uuid: entity.uuid })
@@ -60,7 +109,31 @@ export class LogseqOntologyAPI {
     logger.debug('Updating property', { id, updates: Object.keys(def) })
 
     try {
-      // In real implementation, this would call logseq.Editor.upsertBlockProperty
+      // Get the existing page by name (id is the property name)
+      const page = await logseq.Editor.getPage(id)
+      if (!page) {
+        throw new Error(`Property not found: ${id}`)
+      }
+
+      // Update individual properties using upsertBlockProperty
+      const block = await logseq.Editor.getPageBlocksTree(id)
+      const firstBlock = block?.[0]
+
+      if (firstBlock) {
+        if (def.type !== undefined) {
+          await logseq.Editor.upsertBlockProperty(firstBlock.uuid, 'property/schema-type', def.type)
+        }
+        if (def.cardinality !== undefined) {
+          await logseq.Editor.upsertBlockProperty(firstBlock.uuid, 'property/cardinality', def.cardinality)
+        }
+        if (def.description !== undefined) {
+          await logseq.Editor.upsertBlockProperty(firstBlock.uuid, 'description', def.description)
+        }
+        if (def.hide !== undefined) {
+          await logseq.Editor.upsertBlockProperty(firstBlock.uuid, 'property/hide?', def.hide)
+        }
+      }
+
       logger.info('Property updated', { id })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
@@ -77,7 +150,8 @@ export class LogseqOntologyAPI {
     logger.debug('Deleting property', { id })
 
     try {
-      // In real implementation, this would call logseq.Editor.deletePage
+      // Delete the property page
+      await logseq.Editor.deletePage(id)
       logger.info('Property deleted', { id })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
@@ -94,13 +168,38 @@ export class LogseqOntologyAPI {
     logger.debug('Creating class', { name: def.name })
 
     try {
+      // Build page properties for the class page
+      const pageProperties: Record<string, unknown> = {
+        'block/type': 'class',
+      }
+
+      if (def.description) pageProperties['description'] = def.description
+      if (def.title) pageProperties['title'] = def.title
+      if (def.parent) pageProperties['class/parent'] = def.parent
+      if (def.icon) pageProperties['icon'] = def.icon
+      if (def.schemaVersion) pageProperties['schema-version'] = def.schemaVersion
+      if (def.properties && def.properties.length > 0) {
+        pageProperties['class/properties'] = def.properties
+      }
+
+      // Create the class page in Logseq
+      const page = await logseq.Editor.createPage(def.name, pageProperties, {
+        redirect: false,
+      })
+
+      if (!page) {
+        throw new Error(`Failed to create class page: ${def.name}`)
+      }
+
       const entity: ClassEntity = {
-        id: Date.now(),
-        uuid: crypto.randomUUID(),
+        id: page.id as number,
+        uuid: page.uuid,
         name: def.name,
-        originalName: def.title || def.name,
+        originalName: page.originalName || def.title || def.name,
         parent: def.parent,
         properties: def.properties || [],
+        children: [],
+        schemaVersion: def.schemaVersion || 1,
       }
 
       logger.info('Class created', { name: def.name, uuid: entity.uuid })
@@ -120,6 +219,31 @@ export class LogseqOntologyAPI {
     logger.debug('Updating class', { id, updates: Object.keys(def) })
 
     try {
+      // Get the existing page by name (id is the class name)
+      const page = await logseq.Editor.getPage(id)
+      if (!page) {
+        throw new Error(`Class not found: ${id}`)
+      }
+
+      // Update individual properties using upsertBlockProperty
+      const block = await logseq.Editor.getPageBlocksTree(id)
+      const firstBlock = block?.[0]
+
+      if (firstBlock) {
+        if (def.description !== undefined) {
+          await logseq.Editor.upsertBlockProperty(firstBlock.uuid, 'description', def.description)
+        }
+        if (def.parent !== undefined) {
+          await logseq.Editor.upsertBlockProperty(firstBlock.uuid, 'class/parent', def.parent)
+        }
+        if (def.properties !== undefined) {
+          await logseq.Editor.upsertBlockProperty(firstBlock.uuid, 'class/properties', def.properties)
+        }
+        if (def.icon !== undefined) {
+          await logseq.Editor.upsertBlockProperty(firstBlock.uuid, 'icon', def.icon)
+        }
+      }
+
       logger.info('Class updated', { id })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
@@ -136,6 +260,8 @@ export class LogseqOntologyAPI {
     logger.debug('Deleting class', { id })
 
     try {
+      // Delete the class page
+      await logseq.Editor.deletePage(id)
       logger.info('Class deleted', { id })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
@@ -152,8 +278,26 @@ export class LogseqOntologyAPI {
     logger.debug('Fetching existing properties')
 
     try {
-      // In real implementation, this would use datascript query
+      const results = await executeQuery<Record<string, unknown>>(QUERY_ALL_PROPERTIES)
       const properties = new Map<string, PropertyEntity>()
+
+      for (const result of results) {
+        if (result && result['block/uuid']) {
+          const entity: PropertyEntity = {
+            id: (result['db/id'] as number) || 0,
+            uuid: result['block/uuid'] as string,
+            name: (result['block/name'] as string) || '',
+            originalName: (result['block/original-name'] as string) || '',
+            type: (result['property/schema-type'] as PropertyValueType) || 'default',
+            cardinality: (result['property/cardinality'] as PropertyCardinality) || 'one',
+            hide: (result['property/hide?'] as boolean) || false,
+            schemaVersion: (result['schema-version'] as number) || 1,
+            classes: (result['property/classes'] as string[]) || [],
+          }
+          properties.set(entity.name, entity)
+        }
+      }
+
       logger.info('Fetched properties', { count: properties.size })
       return properties
     } catch (error) {
@@ -169,7 +313,25 @@ export class LogseqOntologyAPI {
     logger.debug('Fetching existing classes')
 
     try {
+      const results = await executeQuery<Record<string, unknown>>(QUERY_ALL_CLASSES)
       const classes = new Map<string, ClassEntity>()
+
+      for (const result of results) {
+        if (result && result['block/uuid']) {
+          const entity: ClassEntity = {
+            id: (result['db/id'] as number) || 0,
+            uuid: result['block/uuid'] as string,
+            name: (result['block/name'] as string) || '',
+            originalName: (result['block/original-name'] as string) || '',
+            parent: result['class/parent'] as string | undefined,
+            properties: (result['class/properties'] as string[]) || [],
+            children: (result['class/children'] as string[]) || [],
+            schemaVersion: (result['schema-version'] as number) || 1,
+          }
+          classes.set(entity.name, entity)
+        }
+      }
+
       logger.info('Fetched classes', { count: classes.size })
       return classes
     } catch (error) {
@@ -259,8 +421,8 @@ export class LogseqOntologyAPI {
     items: T[],
     operation: (item: T) => Promise<void>,
     onProgress?: ProgressCallback
-  ): Promise<BatchResult> {
-    const results: BatchResult = {
+  ): Promise<SimpleBatchResult> {
+    const results: SimpleBatchResult = {
       total: items.length,
       succeeded: 0,
       failed: 0,
@@ -297,22 +459,28 @@ export class LogseqOntologyAPI {
   private async executeOperation(op: TransactionOperation): Promise<void> {
     switch (op.type) {
       case 'createProperty':
-        await this.createProperty(op.data as PropertyDefinition)
+        if (!op.data) throw this.createError('INVALID_OPERATION', 'Missing data for createProperty')
+        await this.createProperty(op.data as unknown as PropertyDefinition)
         break
       case 'updateProperty':
-        await this.updateProperty(op.id!, op.data as Partial<PropertyDefinition>)
+        if (!op.id) throw this.createError('INVALID_OPERATION', 'Missing id for updateProperty')
+        await this.updateProperty(op.id, (op.data ?? {}) as unknown as Partial<PropertyDefinition>)
         break
       case 'deleteProperty':
-        await this.deleteProperty(op.id!)
+        if (!op.id) throw this.createError('INVALID_OPERATION', 'Missing id for deleteProperty')
+        await this.deleteProperty(op.id)
         break
       case 'createClass':
-        await this.createClass(op.data as ClassDefinition)
+        if (!op.data) throw this.createError('INVALID_OPERATION', 'Missing data for createClass')
+        await this.createClass(op.data as unknown as ClassDefinition)
         break
       case 'updateClass':
-        await this.updateClass(op.id!, op.data as Partial<ClassDefinition>)
+        if (!op.id) throw this.createError('INVALID_OPERATION', 'Missing id for updateClass')
+        await this.updateClass(op.id, (op.data ?? {}) as unknown as Partial<ClassDefinition>)
         break
       case 'deleteClass':
-        await this.deleteClass(op.id!)
+        if (!op.id) throw this.createError('INVALID_OPERATION', 'Missing id for deleteClass')
+        await this.deleteClass(op.id)
         break
       default:
         throw this.createError('UNKNOWN_OPERATION', `Unknown operation type: ${op.type}`)

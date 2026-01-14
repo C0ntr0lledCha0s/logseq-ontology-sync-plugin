@@ -2,6 +2,8 @@
  * Datascript query helpers for Logseq
  */
 
+import { logger } from '../utils/logger'
+
 /**
  * Query to find all property pages
  */
@@ -72,19 +74,27 @@ export const QUERY_PROPERTY_USAGE = `
  * @param inputs - Optional query inputs
  * @returns Query results
  */
-export async function executeQuery<T>(
-  query: string,
-  ...inputs: unknown[]
-): Promise<T[]> {
+export async function executeQuery<T>(query: string, ...inputs: unknown[]): Promise<T[]> {
   try {
-    // In a real implementation, this would call:
-    // const results = await logseq.DB.datascriptQuery(query, ...inputs)
-    // return results as T[]
+    logger.debug('Executing datascript query', { query: query.substring(0, 100), inputCount: inputs.length })
 
-    // For now, return empty array as placeholder
-    return [] as T[]
+    // Call the Logseq datascript query API
+    const results = await logseq.DB.datascriptQuery(query, ...inputs)
+
+    if (!results || !Array.isArray(results)) {
+      logger.debug('Query returned no results')
+      return []
+    }
+
+    // Datascript returns nested arrays: [[entity1], [entity2], ...]
+    // We extract the first element from each row
+    const entities = results.map((row: unknown[]) => row[0] as T)
+
+    logger.debug('Query executed successfully', { resultCount: entities.length })
+    return entities
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Query failed'
+    logger.error('Datascript query failed', error)
     throw new Error(`Datascript query failed: ${message}`)
   }
 }

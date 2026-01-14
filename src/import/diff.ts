@@ -16,9 +16,9 @@ import type {
 /**
  * Compare two values and return list of changed fields
  */
-function getChangedFields<T extends Record<string, unknown>>(
-  before: Partial<T>,
-  after: Partial<T>
+function getChangedFields(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>
 ): string[] {
   const changes: string[] = []
   const allKeys = new Set([...Object.keys(before), ...Object.keys(after)])
@@ -38,11 +38,11 @@ function getChangedFields<T extends Record<string, unknown>>(
 /**
  * Compare a template class with an existing class
  */
-function compareClass(
-  newClass: ClassDefinition,
-  existing: ClassDefinition
-): ClassUpdate | null {
-  const changes = getChangedFields(existing, newClass)
+function compareClass(newClass: ClassDefinition, existing: ClassDefinition): ClassUpdate | null {
+  const changes = getChangedFields(
+    existing as unknown as Record<string, unknown>,
+    newClass as unknown as Record<string, unknown>
+  )
 
   if (changes.length === 0) {
     return null
@@ -63,7 +63,10 @@ function compareProperty(
   newProp: PropertyDefinition,
   existing: PropertyDefinition
 ): PropertyUpdate | null {
-  const changes = getChangedFields(existing, newProp)
+  const changes = getChangedFields(
+    existing as unknown as Record<string, unknown>,
+    newProp as unknown as Record<string, unknown>
+  )
 
   if (changes.length === 0) {
     return null
@@ -107,10 +110,7 @@ function detectConflict(
 /**
  * Generate a diff between a parsed template and existing ontology
  */
-export function diffTemplate(
-  template: ParsedTemplate,
-  existing: ExistingOntology
-): ImportPreview {
+export function diffTemplate(template: ParsedTemplate, existing: ExistingOntology): ImportPreview {
   const newClasses: ClassDefinition[] = []
   const updatedClasses: ClassUpdate[] = []
   const newProperties: PropertyDefinition[] = []

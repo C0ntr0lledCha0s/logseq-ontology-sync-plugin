@@ -97,7 +97,14 @@ export class TemplateValidator {
 
     // Check export type
     if (!template.exportType) {
-      issues.push(this.createIssue('error', 'MISSING_EXPORT_TYPE', 'Template must have an export type', 'exportType'))
+      issues.push(
+        this.createIssue(
+          'error',
+          'MISSING_EXPORT_TYPE',
+          'Template must have an export type',
+          'exportType'
+        )
+      )
     }
 
     // Check properties map
@@ -155,7 +162,12 @@ export class TemplateValidator {
       if (prop.id && isUUID(prop.id)) {
         if (seenIds.has(prop.id.uuid)) {
           issues.push(
-            this.createIssue('error', 'DUPLICATE_PROPERTY_ID', `Duplicate property ID: ${prop.id.uuid}`, `${path}.id`)
+            this.createIssue(
+              'error',
+              'DUPLICATE_PROPERTY_ID',
+              `Duplicate property ID: ${prop.id.uuid}`,
+              `${path}.id`
+            )
           )
         } else {
           seenIds.add(prop.id.uuid)
@@ -174,7 +186,9 @@ export class TemplateValidator {
 
     // Required: id
     if (!prop.id) {
-      issues.push(this.createIssue('error', 'MISSING_PROPERTY_ID', 'Property must have an id', `${path}.id`))
+      issues.push(
+        this.createIssue('error', 'MISSING_PROPERTY_ID', 'Property must have an id', `${path}.id`)
+      )
     } else if (this.options.strictUuidValidation) {
       issues.push(...this.validateUuid(prop.id, `${path}.id`))
     }
@@ -182,11 +196,21 @@ export class TemplateValidator {
     // Required: name
     if (!prop.name || typeof prop.name !== 'string') {
       issues.push(
-        this.createIssue('error', 'MISSING_PROPERTY_NAME', 'Property must have a name', `${path}.name`)
+        this.createIssue(
+          'error',
+          'MISSING_PROPERTY_NAME',
+          'Property must have a name',
+          `${path}.name`
+        )
       )
     } else if (prop.name.trim() === '') {
       issues.push(
-        this.createIssue('warning', 'EMPTY_PROPERTY_NAME', 'Property name should not be empty', `${path}.name`)
+        this.createIssue(
+          'warning',
+          'EMPTY_PROPERTY_NAME',
+          'Property name should not be empty',
+          `${path}.name`
+        )
       )
     }
 
@@ -240,15 +264,39 @@ export class TemplateValidator {
         const cv = prop.closedValues[i]
         const cvPath = `${path}.closedValues[${i}]`
 
+        if (!cv) {
+          issues.push(
+            this.createIssue(
+              'error',
+              'INVALID_CLOSED_VALUE',
+              'Closed value entry is undefined',
+              cvPath
+            )
+          )
+          continue
+        }
+
         if (!cv.id) {
-          issues.push(this.createIssue('error', 'MISSING_CLOSED_VALUE_ID', 'Closed value must have an id', `${cvPath}.id`))
+          issues.push(
+            this.createIssue(
+              'error',
+              'MISSING_CLOSED_VALUE_ID',
+              'Closed value must have an id',
+              `${cvPath}.id`
+            )
+          )
         } else if (this.options.strictUuidValidation) {
           issues.push(...this.validateUuid(cv.id, `${cvPath}.id`))
         }
 
         if (!cv.value || typeof cv.value !== 'string') {
           issues.push(
-            this.createIssue('error', 'MISSING_CLOSED_VALUE', 'Closed value must have a value', `${cvPath}.value`)
+            this.createIssue(
+              'error',
+              'MISSING_CLOSED_VALUE',
+              'Closed value must have a value',
+              `${cvPath}.value`
+            )
           )
         }
       }
@@ -282,7 +330,14 @@ export class TemplateValidator {
       // Check for duplicate IDs
       if (cls.id && isUUID(cls.id)) {
         if (seenIds.has(cls.id.uuid)) {
-          issues.push(this.createIssue('error', 'DUPLICATE_CLASS_ID', `Duplicate class ID: ${cls.id.uuid}`, `${path}.id`))
+          issues.push(
+            this.createIssue(
+              'error',
+              'DUPLICATE_CLASS_ID',
+              `Duplicate class ID: ${cls.id.uuid}`,
+              `${path}.id`
+            )
+          )
         } else {
           seenIds.add(cls.id.uuid)
         }
@@ -300,17 +355,26 @@ export class TemplateValidator {
 
     // Required: id
     if (!cls.id) {
-      issues.push(this.createIssue('error', 'MISSING_CLASS_ID', 'Class must have an id', `${path}.id`))
+      issues.push(
+        this.createIssue('error', 'MISSING_CLASS_ID', 'Class must have an id', `${path}.id`)
+      )
     } else if (this.options.strictUuidValidation) {
       issues.push(...this.validateUuid(cls.id, `${path}.id`))
     }
 
     // Required: name
     if (!cls.name || typeof cls.name !== 'string') {
-      issues.push(this.createIssue('error', 'MISSING_CLASS_NAME', 'Class must have a name', `${path}.name`))
+      issues.push(
+        this.createIssue('error', 'MISSING_CLASS_NAME', 'Class must have a name', `${path}.name`)
+      )
     } else if (cls.name.trim() === '') {
       issues.push(
-        this.createIssue('warning', 'EMPTY_CLASS_NAME', 'Class name should not be empty', `${path}.name`)
+        this.createIssue(
+          'warning',
+          'EMPTY_CLASS_NAME',
+          'Class name should not be empty',
+          `${path}.name`
+        )
       )
     }
 
@@ -428,7 +492,9 @@ export class TemplateValidator {
     }
 
     if (!isUUID(uuid)) {
-      issues.push(this.createIssue('error', 'INVALID_UUID_FORMAT', 'Value is not a valid UUID object', path))
+      issues.push(
+        this.createIssue('error', 'INVALID_UUID_FORMAT', 'Value is not a valid UUID object', path)
+      )
       return issues
     }
 
@@ -530,7 +596,9 @@ export function formatValidationIssues(result: ValidationResult): string {
   }
 
   lines.push('')
-  lines.push(`Summary: ${result.stats.errorCount} errors, ${result.stats.warningCount} warnings, ${result.stats.infoCount} info`)
+  lines.push(
+    `Summary: ${result.stats.errorCount} errors, ${result.stats.warningCount} warnings, ${result.stats.infoCount} info`
+  )
 
   return lines.join('\n')
 }

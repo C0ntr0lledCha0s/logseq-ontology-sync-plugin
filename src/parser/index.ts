@@ -8,11 +8,35 @@ export type {
   PropertySchemaType,
   PropertyCardinality,
   PropertyDefinition,
+  ClosedValue,
   ClassDefinition,
+  PageReference,
+  BlockDefinition,
   ParsedTemplate,
-  TemplateMetadata,
-  ValidationError,
-  ValidationWarning,
+  ValidationSeverity,
+  ValidationIssue,
   ValidationResult,
+  ValidationStats,
+  ParserOptions,
+  ParseError,
+  ValidationError,
+  EdnData,
+  isUUID,
+  isEDNTaggedVal,
+  isEDNKeyword,
+  UUID_REGEX,
 } from './types'
-export { TemplateValidator, createValidator } from './validator'
+export {
+  TemplateValidator,
+  validateTemplate,
+  hasErrors,
+  hasWarnings,
+  formatValidationIssues,
+  type ValidatorOptions,
+  type ValidationRule,
+} from './validator'
+
+/**
+ * Factory function to create a validator instance
+ */
+export { TemplateValidator as createValidator } from './validator'

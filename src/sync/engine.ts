@@ -121,9 +121,7 @@ export class DefaultContentDiffer implements ContentDiffer {
       (c) => localItems.classes.includes(c) && this.hasChanges(c, localContent, remoteContent)
     )
 
-    const propertiesToAdd = remoteItems.properties.filter(
-      (p) => !localItems.properties.includes(p)
-    )
+    const propertiesToAdd = remoteItems.properties.filter((p) => !localItems.properties.includes(p))
     const propertiesToRemove = localItems.properties.filter(
       (p) => !remoteItems.properties.includes(p)
     )
@@ -171,11 +169,7 @@ export class DefaultContentDiffer implements ContentDiffer {
     return { classes, properties }
   }
 
-  private hasChanges(
-    _item: string,
-    _localContent: string | null,
-    _remoteContent: string
-  ): boolean {
+  private hasChanges(_item: string, _localContent: string | null, _remoteContent: string): boolean {
     // Simplified - would need proper content comparison
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     return false

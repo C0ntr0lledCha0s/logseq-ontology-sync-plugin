@@ -40,7 +40,7 @@ export class SourceFetcher {
       throw new FetchError(message, source)
     }
 
-    const checksum = this.computeChecksum(content)
+    const checksum = await this.computeChecksum(content)
     const fetchedAt = new Date().toISOString()
 
     logger.info('Source fetched successfully', {
@@ -59,36 +59,23 @@ export class SourceFetcher {
 
   /**
    * Fetch content from a local file path
+   *
+   * Note: Automatic local file fetching is not supported in browser environment.
+   * Users should use the file picker UI to select files manually.
    */
-  async fetchLocal(path: string): Promise<string> {
-    logger.debug('Fetching local file', { path })
-
-    try {
-      // Use Bun's file API for reading local files
-      const file = Bun.file(path)
-
-      // Check if file exists
-      const exists = await file.exists()
-      if (!exists) {
-        throw new Error(`File not found: ${path}`)
-      }
-
-      const content = await file.text()
-
-      if (!content || content.trim().length === 0) {
-        throw new Error(`File is empty: ${path}`)
-      }
-
-      logger.debug('Local file read successfully', {
-        path,
-        size: content.length,
-      })
-
-      return content
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to read file'
-      throw new Error(`Local fetch failed: ${message}`)
-    }
+  async fetchLocal(_path: string): Promise<string> {
+    // Local file fetching is not supported in browser environment
+    // The Logseq plugin runs in a browser context where direct filesystem
+    // access is restricted for security reasons.
+    //
+    // For local files, users should:
+    // 1. Use the import command with file picker
+    // 2. Convert local sources to URL sources (serve files via local server)
+    // 3. Use the Logseq assets folder which is accessible via URL
+    throw new Error(
+      'Automatic local file fetching is not supported in browser environment. ' +
+        'Use the import command to select files manually, or convert to a URL source.'
+    )
   }
 
   /**
@@ -139,19 +126,21 @@ export class SourceFetcher {
 
   /**
    * Compute SHA-256 checksum of content
+   * Uses Web Crypto API for browser compatibility
    */
-  computeChecksum(content: string): string {
-    // Use Bun's native crypto for hashing
-    const hasher = new Bun.CryptoHasher('sha256')
-    hasher.update(content)
-    return hasher.digest('hex')
+  async computeChecksum(content: string): Promise<string> {
+    const encoder = new TextEncoder()
+    const data = encoder.encode(content)
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+    const hashArray = Array.from(new Uint8Array(hashBuffer))
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
   }
 
   /**
    * Verify content against expected checksum
    */
-  verifyChecksum(content: string, expectedChecksum: string): boolean {
-    const actualChecksum = this.computeChecksum(content)
+  async verifyChecksum(content: string, expectedChecksum: string): Promise<boolean> {
+    const actualChecksum = await this.computeChecksum(content)
     const isValid = actualChecksum === expectedChecksum
 
     if (!isValid) {
@@ -192,12 +181,16 @@ export class SourceFetcher {
 
   /**
    * Check if a source is reachable
+   *
+   * Note: Local sources always return false in browser environment
+   * since we cannot check local file existence.
    */
   async isReachable(source: TemplateSource): Promise<boolean> {
     try {
       if (source.type === 'local') {
-        const file = Bun.file(source.location)
-        return await file.exists()
+        // Cannot check local file existence in browser environment
+        // Return false to indicate the source cannot be automatically accessed
+        return false
       } else if (source.type === 'url') {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 5000) // Quick check

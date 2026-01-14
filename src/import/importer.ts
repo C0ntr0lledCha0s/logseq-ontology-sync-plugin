@@ -5,6 +5,11 @@
 
 import { parseEdn, validateEdnTemplate } from '../parser/edn-parser'
 import { logger } from '../utils/logger'
+import { LogseqOntologyAPI } from '../api/ontology-api'
+import type {
+  PropertyDefinition as APIPropertyDefinition,
+  ClassDefinition as APIClassDefinition,
+} from '../api/types'
 import { diffTemplate, createEmptyOntology } from './diff'
 import type {
   ImportOptions,
@@ -45,9 +50,7 @@ function ednToParsedTemplate(data: Record<string, unknown>): ParsedTemplate {
           namespace: c['namespace'] ? String(c['namespace']) : undefined,
           parent: c['parent'] ? String(c['parent']) : undefined,
           description: c['description'] ? String(c['description']) : undefined,
-          properties: Array.isArray(c['properties'])
-            ? c['properties'].map(String)
-            : undefined,
+          properties: Array.isArray(c['properties']) ? c['properties'].map(String) : undefined,
         })
       }
     }
@@ -87,9 +90,11 @@ function ednToParsedTemplate(data: Record<string, unknown>): ParsedTemplate {
  */
 export class OntologyImporter {
   private options: Required<ImportOptions>
+  private api: LogseqOntologyAPI
 
   constructor(options?: ImportOptions) {
     this.options = { ...defaultOptions, ...options }
+    this.api = new LogseqOntologyAPI()
   }
 
   /**
@@ -102,37 +107,138 @@ export class OntologyImporter {
   /**
    * Parse EDN content into a template structure
    */
-  private parseContent(content: string): ParsedTemplate {
+  private parseContent(content: string, validate: boolean = false): ParsedTemplate {
     const data = parseEdn(content)
-    return ednToParsedTemplate(data)
+
+    if (validate) {
+      const isValid = validateEdnTemplate(data)
+      if (!isValid) {
+        throw new Error('Template validation failed: invalid EDN structure')
+      }
+    }
+
+    return ednToParsedTemplate(data as unknown as Record<string, unknown>)
   }
 
   /**
    * Get existing ontology from Logseq graph
-   * In a real implementation, this would query Logseq's database
+   * Uses the Logseq API to query existing properties and classes
    */
   private async getExistingOntology(): Promise<ExistingOntology> {
-    // TODO: Implement actual Logseq query when API is available
-    // For now, return empty ontology
-    return createEmptyOntology()
+    try {
+      const [existingProperties, existingClasses] = await Promise.all([
+        this.api.getExistingProperties(),
+        this.api.getExistingClasses(),
+      ])
+
+      // Convert API types to import types
+      const classes = new Map<string, ClassDefinition>()
+      const properties = new Map<string, PropertyDefinition>()
+
+      for (const [name, entity] of existingClasses) {
+        classes.set(name, {
+          name: entity.name,
+          parent: entity.parent,
+          properties: entity.properties,
+        })
+      }
+
+      for (const [name, entity] of existingProperties) {
+        properties.set(name, {
+          name: entity.name,
+          type: entity.type,
+          cardinality: entity.cardinality,
+        })
+      }
+
+      return { classes, properties }
+    } catch (error) {
+      logger.warn('Failed to fetch existing ontology, using empty', error)
+      return createEmptyOntology()
+    }
   }
 
   /**
    * Apply changes to Logseq graph
-   * In a real implementation, this would use the Logseq API
+   * Uses the Logseq API to create/update properties and classes
    */
   private async applyChanges(
     preview: ImportPreview
   ): Promise<{ classes: number; properties: number }> {
-    // TODO: Implement actual Logseq API calls
     logger.info('Applying changes', {
-      classes: preview.newClasses.length + preview.updatedClasses.length,
-      properties: preview.newProperties.length + preview.updatedProperties.length,
+      newClasses: preview.newClasses.length,
+      updatedClasses: preview.updatedClasses.length,
+      newProperties: preview.newProperties.length,
+      updatedProperties: preview.updatedProperties.length,
     })
 
-    return {
-      classes: preview.newClasses.length + preview.updatedClasses.length,
-      properties: preview.newProperties.length + preview.updatedProperties.length,
+    let classesApplied = 0
+    let propertiesApplied = 0
+
+    // Start a transaction for atomic operations
+    await this.api.beginTransaction()
+
+    try {
+      // Create new properties
+      for (const prop of preview.newProperties) {
+        const apiProp: APIPropertyDefinition = {
+          name: prop.name,
+          type: (prop.type as APIPropertyDefinition['type']) || 'default',
+          cardinality: prop.cardinality || 'one',
+          description: prop.description,
+        }
+        await this.api.createProperty(apiProp)
+        propertiesApplied++
+      }
+
+      // Update existing properties
+      for (const update of preview.updatedProperties) {
+        await this.api.updateProperty(update.name, {
+          type: update.after.type as APIPropertyDefinition['type'],
+          cardinality: update.after.cardinality,
+          description: update.after.description,
+        })
+        propertiesApplied++
+      }
+
+      // Create new classes
+      for (const cls of preview.newClasses) {
+        const apiClass: APIClassDefinition = {
+          name: cls.name,
+          parent: cls.parent,
+          description: cls.description,
+          properties: cls.properties,
+        }
+        await this.api.createClass(apiClass)
+        classesApplied++
+      }
+
+      // Update existing classes
+      for (const update of preview.updatedClasses) {
+        await this.api.updateClass(update.name, {
+          parent: update.after.parent,
+          description: update.after.description,
+          properties: update.after.properties,
+        })
+        classesApplied++
+      }
+
+      // Commit the transaction
+      await this.api.commitTransaction()
+
+      logger.info('Changes applied successfully', {
+        classes: classesApplied,
+        properties: propertiesApplied,
+      })
+
+      return {
+        classes: classesApplied,
+        properties: propertiesApplied,
+      }
+    } catch (error) {
+      // Rollback on error
+      await this.api.rollbackTransaction()
+      throw error
     }
   }
 
@@ -147,21 +253,15 @@ export class OntologyImporter {
       message: 'Parsing template...',
     })
 
-    const template = this.parseContent(content)
+    // Parse and optionally validate in one step
+    const template = this.parseContent(content, this.options.validate)
 
     this.reportProgress({
       phase: 'validating',
       current: 1,
       total: 3,
-      message: 'Validating template...',
+      message: 'Validation complete',
     })
-
-    if (this.options.validate) {
-      const validation = validateEdnTemplate(template as unknown as Record<string, unknown>)
-      if (!validation) {
-        throw new Error('Template validation failed')
-      }
-    }
 
     this.reportProgress({
       phase: 'comparing',

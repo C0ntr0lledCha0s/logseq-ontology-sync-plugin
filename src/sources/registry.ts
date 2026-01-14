@@ -4,12 +4,7 @@
  */
 
 import { logger } from '../utils/logger'
-import type {
-  TemplateSource,
-  SourceInput,
-  SourceUpdate,
-  ValidationResult,
-} from './types'
+import type { TemplateSource, SourceInput, SourceUpdate, ValidationResult } from './types'
 import { SourceNotFoundError } from './types'
 
 /**
