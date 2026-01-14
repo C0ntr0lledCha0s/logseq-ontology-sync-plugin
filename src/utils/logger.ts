@@ -28,12 +28,14 @@ export class Logger {
 
   debug(message: string, ...args: unknown[]): void {
     if (this.shouldLog(LogLevel.DEBUG)) {
+      // eslint-disable-next-line no-console
       console.debug(`${PLUGIN_PREFIX} [DEBUG]`, message, ...args)
     }
   }
 
   info(message: string, ...args: unknown[]): void {
     if (this.shouldLog(LogLevel.INFO)) {
+      // eslint-disable-next-line no-console
       console.log(`${PLUGIN_PREFIX} [INFO]`, message, ...args)
     }
   }
