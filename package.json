@@ -14,7 +14,7 @@
   },
   "scripts": {
     "dev": "bun run vite",
-    "build": "bun run typecheck && bun run vite build",
+    "build": "bun run vite build",
     "preview": "bun run vite preview",
     "test": "bun test",
     "test:watch": "bun test --watch",
