@@ -1,0 +1,12 @@
+[install]
+# Set the default registry
+registry = "https://registry.npmjs.org"
+
+# Auto-install peer dependencies
+auto = true
+
+[test]
+# Test configuration for bun test
+preload = []
+coverage = true
+coverageDir = "coverage"

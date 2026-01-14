@@ -1,0 +1,49 @@
+{
+  "name": "logseq-ontology-sync-plugin",
+  "version": "0.1.0",
+  "description": "A Logseq plugin for managing and synchronizing ontology templates",
+  "author": "C0ntr0lledCha0s",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.html",
+  "logseq": {
+    "id": "logseq-ontology-sync",
+    "title": "Ontology Sync",
+    "icon": "./icon.svg",
+    "main": "dist/index.html"
+  },
+  "scripts": {
+    "dev": "bun run vite",
+    "build": "bun run typecheck && bun run vite build",
+    "preview": "bun run vite preview",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "lint": "bun run eslint src --ext .ts,.tsx",
+    "lint:fix": "bun run eslint src --ext .ts,.tsx --fix",
+    "format": "bun run prettier --write \"src/**/*.{ts,tsx,json,css,md}\"",
+    "format:check": "bun run prettier --check \"src/**/*.{ts,tsx,json,css,md}\"",
+    "typecheck": "bun run tsc --noEmit"
+  },
+  "trustedDependencies": ["@logseq/libs"],
+  "dependencies": {
+    "@logseq/libs": "^0.0.17",
+    "edn-data": "^1.1.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^20.10.6",
+    "@typescript-eslint/eslint-plugin": "^6.17.0",
+    "@typescript-eslint/parser": "^6.17.0",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.1.2",
+    "prettier": "^3.1.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.10",
+    "vite-plugin-logseq": "^1.1.2"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}
