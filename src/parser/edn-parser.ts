@@ -3,10 +3,10 @@
  * Handles parsing of EDN template files
  */
 
-import { parse, encode } from 'edn-data'
+import { parseEDNString, toEDNStringFromSimpleObject, type EDNObjectableVal } from 'edn-data'
 
 export interface EdnData {
-  [key: string]: unknown
+  [key: string]: EDNObjectableVal
 }
 
 /**
@@ -14,7 +14,7 @@ export interface EdnData {
  */
 export function parseEdn(ednString: string): EdnData {
   try {
-    const parsed = parse(ednString)
+    const parsed = parseEDNString(ednString, { mapAs: 'object', keywordAs: 'string' })
     return parsed as EdnData
   } catch (error) {
     throw new Error(`Failed to parse EDN: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -26,7 +26,7 @@ export function parseEdn(ednString: string): EdnData {
  */
 export function encodeEdn(data: EdnData): string {
   try {
-    return encode(data)
+    return toEDNStringFromSimpleObject(data)
   } catch (error) {
     throw new Error(`Failed to encode EDN: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }

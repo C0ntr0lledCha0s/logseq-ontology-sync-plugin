@@ -15,9 +15,10 @@ export async function showMessage(
 
 /**
  * Show a confirmation dialog
+ * Uses native browser confirm since @logseq/libs IUIProxy doesn't have a confirm method
  */
-export async function showConfirm(message: string): Promise<boolean> {
-  return await logseq.UI.confirm(message)
+export function showConfirm(message: string): boolean {
+  return window.confirm(message)
 }
 
 /**

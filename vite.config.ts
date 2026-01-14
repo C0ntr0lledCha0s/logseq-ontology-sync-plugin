@@ -1,6 +1,12 @@
 import { defineConfig } from 'vite'
-import logseqDevPlugin from 'vite-plugin-logseq'
+import logseqDevPluginModule from 'vite-plugin-logseq'
 import { resolve } from 'path'
+
+// Handle CJS/ESM interop - the plugin may be double-nested
+const logseqDevPlugin =
+  typeof logseqDevPluginModule === 'function'
+    ? logseqDevPluginModule
+    : (logseqDevPluginModule as { default: typeof logseqDevPluginModule }).default
 
 export default defineConfig({
   plugins: [
