@@ -237,14 +237,16 @@ export class LogseqSyncStateStorage implements SyncStateStorage {
     return Promise.resolve(value as SyncState | null)
   }
 
-  async set(sourceId: string, state: SyncState): Promise<void> {
+  set(sourceId: string, state: SyncState): Promise<void> {
     const key = STORAGE_KEY_PREFIX + sourceId
-    await logseq.updateSettings({ [key]: state })
+    logseq.updateSettings({ [key]: state })
+    return Promise.resolve()
   }
 
-  async delete(sourceId: string): Promise<void> {
+  delete(sourceId: string): Promise<void> {
     const key = STORAGE_KEY_PREFIX + sourceId
-    await logseq.updateSettings({ [key]: null })
+    logseq.updateSettings({ [key]: null })
+    return Promise.resolve()
   }
 
   getAllKeys(): Promise<string[]> {
@@ -264,20 +266,22 @@ export class LogseqSyncStateStorage implements SyncStateStorage {
 export class InMemorySyncStateStorage implements SyncStateStorage {
   private store: Map<string, SyncState> = new Map()
 
-  async get(sourceId: string): Promise<SyncState | null> {
-    return this.store.get(sourceId) ?? null
+  get(sourceId: string): Promise<SyncState | null> {
+    return Promise.resolve(this.store.get(sourceId) ?? null)
   }
 
-  async set(sourceId: string, state: SyncState): Promise<void> {
+  set(sourceId: string, state: SyncState): Promise<void> {
     this.store.set(sourceId, state)
+    return Promise.resolve()
   }
 
-  async delete(sourceId: string): Promise<void> {
+  delete(sourceId: string): Promise<void> {
     this.store.delete(sourceId)
+    return Promise.resolve()
   }
 
-  async getAllKeys(): Promise<string[]> {
-    return Array.from(this.store.keys())
+  getAllKeys(): Promise<string[]> {
+    return Promise.resolve(Array.from(this.store.keys()))
   }
 
   /** Clear all stored state (for testing) */

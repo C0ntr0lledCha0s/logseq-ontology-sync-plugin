@@ -77,13 +77,14 @@ export class SourceRegistry {
   /**
    * Remove a source from the registry
    */
-  async removeSource(id: string): Promise<void> {
+  removeSource(id: string): Promise<void> {
     if (!this.sources.has(id)) {
-      throw new SourceNotFoundError(id)
+      return Promise.reject(new SourceNotFoundError(id))
     }
 
     this.sources.delete(id)
     logger.info('Source removed', { id })
+    return Promise.resolve()
   }
 
   /**
@@ -115,35 +116,35 @@ export class SourceRegistry {
   /**
    * Get a source by ID
    */
-  async getSource(id: string): Promise<TemplateSource | null> {
-    return this.sources.get(id) ?? null
+  getSource(id: string): Promise<TemplateSource | null> {
+    return Promise.resolve(this.sources.get(id) ?? null)
   }
 
   /**
    * Get all sources
    */
-  async getAllSources(): Promise<TemplateSource[]> {
-    return Array.from(this.sources.values())
+  getAllSources(): Promise<TemplateSource[]> {
+    return Promise.resolve(Array.from(this.sources.values()))
   }
 
   /**
    * Get all enabled sources
    */
-  async getEnabledSources(): Promise<TemplateSource[]> {
-    return Array.from(this.sources.values()).filter((s) => s.enabled)
+  getEnabledSources(): Promise<TemplateSource[]> {
+    return Promise.resolve(Array.from(this.sources.values()).filter((s) => s.enabled))
   }
 
   /**
    * Get sources by type
    */
-  async getSourcesByType(type: 'local' | 'url'): Promise<TemplateSource[]> {
-    return Array.from(this.sources.values()).filter((s) => s.type === type)
+  getSourcesByType(type: 'local' | 'url'): Promise<TemplateSource[]> {
+    return Promise.resolve(Array.from(this.sources.values()).filter((s) => s.type === type))
   }
 
   /**
    * Validate a source configuration
    */
-  async validateSource(source: TemplateSource): Promise<ValidationResult> {
+  validateSource(source: TemplateSource): Promise<ValidationResult> {
     const errors: string[] = []
     const warnings: string[] = []
 
@@ -195,35 +196,36 @@ export class SourceRegistry {
       errors.push('Source checksum must be a string')
     }
 
-    return {
+    return Promise.resolve({
       valid: errors.length === 0,
       errors,
       warnings,
-    }
+    })
   }
 
   /**
    * Check if a source with the given name already exists
    */
-  async hasSourceWithName(name: string): Promise<boolean> {
-    return Array.from(this.sources.values()).some(
-      (s) => s.name.toLowerCase() === name.toLowerCase()
+  hasSourceWithName(name: string): Promise<boolean> {
+    return Promise.resolve(
+      Array.from(this.sources.values()).some((s) => s.name.toLowerCase() === name.toLowerCase())
     )
   }
 
   /**
    * Get the count of sources
    */
-  async getSourceCount(): Promise<number> {
-    return this.sources.size
+  getSourceCount(): Promise<number> {
+    return Promise.resolve(this.sources.size)
   }
 
   /**
    * Clear all sources
    */
-  async clearAll(): Promise<void> {
+  clearAll(): Promise<void> {
     this.sources.clear()
     logger.info('All sources cleared')
+    return Promise.resolve()
   }
 
   /**

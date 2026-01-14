@@ -3,6 +3,9 @@ import { LogseqOntologyAPI } from '../src/api/ontology-api'
 import { buildFilterQuery } from '../src/api/queries'
 import type { PropertyDefinition, ClassDefinition } from '../src/api/types'
 
+// Create dynamic mock that can be configured per test
+let getPageReturnsNull = false
+
 // Mock the logseq global
 const mockLogseq = {
   Editor: {
@@ -13,12 +16,17 @@ const mockLogseq = {
       originalName: name,
       properties,
     })),
-    getPage: mock(async (name: string) => ({
-      id: Date.now(),
-      uuid: crypto.randomUUID(),
-      name,
-      originalName: name,
-    })),
+    getPage: mock(async (name: string) => {
+      if (getPageReturnsNull) {
+        return null
+      }
+      return {
+        id: Date.now(),
+        uuid: crypto.randomUUID(),
+        name,
+        originalName: name,
+      }
+    }),
     deletePage: mock(async () => undefined),
     getPageBlocksTree: mock(async () => [
       { uuid: crypto.randomUUID(), content: '' },
@@ -45,10 +53,15 @@ describe('LogseqOntologyAPI', () => {
     mockLogseq.Editor.getPageBlocksTree.mockClear()
     mockLogseq.Editor.upsertBlockProperty.mockClear()
     mockLogseq.DB.datascriptQuery.mockClear()
+    // Reset state
+    getPageReturnsNull = false
   })
 
   describe('Property Operations', () => {
     test('should create a property', async () => {
+      // Property doesn't exist yet
+      getPageReturnsNull = true
+
       const def: PropertyDefinition = {
         name: 'test-property',
         type: 'default',
@@ -60,6 +73,19 @@ describe('LogseqOntologyAPI', () => {
       expect(result).toBeDefined()
       expect(result.name).toBe('test-property')
       expect(result.uuid).toBeDefined()
+    })
+
+    test('should throw when creating duplicate property', async () => {
+      // Property already exists
+      getPageReturnsNull = false
+
+      const def: PropertyDefinition = {
+        name: 'existing-property',
+        type: 'default',
+        cardinality: 'one',
+      }
+
+      await expect(api.createProperty(def)).rejects.toThrow('already exists')
     })
 
     test('should update a property', async () => {
@@ -80,6 +106,9 @@ describe('LogseqOntologyAPI', () => {
 
   describe('Class Operations', () => {
     test('should create a class', async () => {
+      // Class doesn't exist yet
+      getPageReturnsNull = true
+
       const def: ClassDefinition = {
         name: 'TestClass',
       }
@@ -89,6 +118,17 @@ describe('LogseqOntologyAPI', () => {
       expect(result).toBeDefined()
       expect(result.name).toBe('TestClass')
       expect(result.uuid).toBeDefined()
+    })
+
+    test('should throw when creating duplicate class', async () => {
+      // Class already exists
+      getPageReturnsNull = false
+
+      const def: ClassDefinition = {
+        name: 'ExistingClass',
+      }
+
+      await expect(api.createClass(def)).rejects.toThrow('already exists')
     })
 
     test('should update a class', async () => {
@@ -106,8 +146,53 @@ describe('LogseqOntologyAPI', () => {
     })
   })
 
-  describe('Transaction Operations', () => {
-    test('should begin a transaction', async () => {
+  describe('Batch Operations (new API)', () => {
+    test('should begin and execute batch', async () => {
+      // Items don't exist
+      getPageReturnsNull = true
+
+      api.beginBatch()
+      api.addToBatch({
+        type: 'createProperty',
+        name: 'batch-prop',
+        data: { name: 'batch-prop', type: 'default', cardinality: 'one' },
+      })
+
+      const result = await api.executeBatch()
+
+      expect(result.total).toBe(1)
+      expect(result.succeeded).toBe(1)
+      expect(result.failed).toBe(0)
+    })
+
+    test('should not allow multiple batches', () => {
+      api.beginBatch()
+
+      expect(() => api.beginBatch()).toThrow('already in progress')
+    })
+
+    test('should cancel batch', () => {
+      api.beginBatch()
+
+      expect(() => api.cancelBatch()).not.toThrow()
+    })
+
+    test('should throw when no batch exists', async () => {
+      await expect(api.executeBatch()).rejects.toThrow('No batch')
+    })
+
+    test('should get batch status', () => {
+      api.beginBatch()
+
+      const status = api.getBatchStatus()
+
+      expect(status).toBeDefined()
+      expect(status!.status).toBe('pending')
+    })
+  })
+
+  describe('Transaction Operations (deprecated API)', () => {
+    test('should begin a transaction (deprecated)', async () => {
       const tx = await api.beginTransaction()
 
       expect(tx).toBeDefined()
@@ -133,6 +218,9 @@ describe('LogseqOntologyAPI', () => {
     })
 
     test('should commit transaction', async () => {
+      // Items don't exist
+      getPageReturnsNull = true
+
       await api.beginTransaction()
       api.addToTransaction({
         type: 'createProperty',
@@ -149,16 +237,16 @@ describe('LogseqOntologyAPI', () => {
     })
 
     test('should throw when no transaction exists', async () => {
-      await expect(api.commitTransaction()).rejects.toThrow('No transaction')
+      await expect(api.commitTransaction()).rejects.toThrow('No batch')
     })
   })
 
-  describe('Batch Operations', () => {
+  describe('Generic Batch Executor (runBatch)', () => {
     test('should execute batch operations', async () => {
       const items = [1, 2, 3]
       const operation = async () => {}
 
-      const result = await api.executeBatch(items, operation)
+      const result = await api.runBatch(items, operation)
 
       expect(result.total).toBe(3)
       expect(result.succeeded).toBe(3)
@@ -169,7 +257,7 @@ describe('LogseqOntologyAPI', () => {
       const items = [1, 2, 3]
       const progressUpdates: number[] = []
 
-      await api.executeBatch(items, async () => {}, (progress) => {
+      await api.runBatch(items, async () => {}, (progress) => {
         progressUpdates.push(progress.current)
       })
 
@@ -182,7 +270,7 @@ describe('LogseqOntologyAPI', () => {
         if (item === 2) throw new Error('Test error')
       }
 
-      const result = await api.executeBatch(items, operation)
+      const result = await api.runBatch(items, operation)
 
       expect(result.succeeded).toBe(2)
       expect(result.failed).toBe(1)

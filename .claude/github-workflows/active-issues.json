@@ -1,0 +1,177 @@
+{
+  "lastSync": "2026-01-14T09:02:00Z",
+  "repository": "C0ntr0lledCha0s/logseq-ontology-sync-plugin",
+  "filter": "all",
+  "issues": [
+    {
+      "number": 2,
+      "title": "Research Logseq Plugin API and Architecture",
+      "state": "open",
+      "labels": ["documentation", "docs", "scope:api"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/2",
+      "body_preview": "Understand Logseq plugin system architecture, APIs, and best practices for DB plugins."
+    },
+    {
+      "number": 3,
+      "title": "Design Plugin API for Ontology Import/Sync",
+      "state": "open",
+      "labels": ["scope:api"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/3",
+      "body_preview": "Design the public API and internal architecture for ontology import and synchronization."
+    },
+    {
+      "number": 4,
+      "title": "Analyze EDN Parser Requirements",
+      "state": "open",
+      "labels": ["scope:parser"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/4",
+      "body_preview": "Determine requirements and approach for parsing EDN template files in the plugin."
+    },
+    {
+      "number": 5,
+      "title": "Create Technical Specification Document",
+      "state": "open",
+      "labels": ["documentation", "docs"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/5",
+      "body_preview": "Consolidate all research and design work into a comprehensive technical specification."
+    },
+    {
+      "number": 6,
+      "title": "Set Up Plugin Project Scaffolding",
+      "state": "open",
+      "labels": ["enhancement"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/6",
+      "body_preview": "Create the initial plugin project structure with build tools and development environment."
+    },
+    {
+      "number": 7,
+      "title": "Implement EDN Parser Module",
+      "state": "open",
+      "labels": ["enhancement", "feature", "scope:parser"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/7",
+      "body_preview": "Build a robust EDN parser that can handle Logseq ontology template files."
+    },
+    {
+      "number": 8,
+      "title": "Create Logseq API Wrapper Module",
+      "state": "open",
+      "labels": ["enhancement", "feature", "scope:api"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/8",
+      "body_preview": "Build an abstraction layer for interacting with Logseq's database APIs."
+    },
+    {
+      "number": 9,
+      "title": "Implement Basic Import Functionality",
+      "state": "open",
+      "labels": ["enhancement", "feature"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/9",
+      "body_preview": "Create the core import functionality to load templates into Logseq."
+    },
+    {
+      "number": 10,
+      "title": "Implement Template Source Management",
+      "state": "open",
+      "labels": ["enhancement", "feature"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/10",
+      "body_preview": "Allow users to configure and manage multiple template sources."
+    },
+    {
+      "number": 11,
+      "title": "Implement Sync Functionality",
+      "state": "open",
+      "labels": ["enhancement", "feature"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/11",
+      "body_preview": "Enable automatic synchronization with template sources to keep ontologies up-to-date."
+    },
+    {
+      "number": 12,
+      "title": "Implement Conflict Resolution System",
+      "state": "open",
+      "labels": ["enhancement", "feature"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/12",
+      "body_preview": "Handle conflicts between template source and local modifications intelligently."
+    },
+    {
+      "number": 13,
+      "title": "Add Version Control and History",
+      "state": "open",
+      "labels": ["enhancement", "feature"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/13",
+      "body_preview": "Track changes to ontology over time and enable rollback capabilities."
+    },
+    {
+      "number": 14,
+      "title": "UI/UX Polish and Accessibility",
+      "state": "open",
+      "labels": ["enhancement", "scope:ui"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/14",
+      "body_preview": "Refine user interface and ensure excellent user experience and accessibility."
+    },
+    {
+      "number": 15,
+      "title": "Comprehensive Testing Suite",
+      "state": "open",
+      "labels": ["test"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/15",
+      "body_preview": "Ensure plugin reliability through comprehensive testing."
+    },
+    {
+      "number": 16,
+      "title": "Complete Documentation",
+      "state": "open",
+      "labels": ["documentation", "docs"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/16",
+      "body_preview": "Provide comprehensive documentation for users and contributors."
+    },
+    {
+      "number": 17,
+      "title": "Performance Optimization",
+      "state": "open",
+      "labels": ["enhancement"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/17",
+      "body_preview": "Optimize plugin performance for large templates and smooth user experience."
+    },
+    {
+      "number": 18,
+      "title": "Prepare for Marketplace Release",
+      "state": "open",
+      "labels": ["priority:high"],
+      "assignees": [],
+      "milestone": null,
+      "url": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/issues/18",
+      "body_preview": "Prepare plugin for publication to Logseq marketplace."
+    }
+  ]
+}

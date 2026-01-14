@@ -76,9 +76,13 @@ export const QUERY_PROPERTY_USAGE = `
  */
 export async function executeQuery<T>(query: string, ...inputs: unknown[]): Promise<T[]> {
   try {
-    logger.debug('Executing datascript query', { query: query.substring(0, 100), inputCount: inputs.length })
+    logger.debug('Executing datascript query', {
+      query: query.substring(0, 100),
+      inputCount: inputs.length,
+    })
 
     // Call the Logseq datascript query API
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const results = await logseq.DB.datascriptQuery(query, ...inputs)
 
     if (!results || !Array.isArray(results)) {
@@ -109,8 +113,8 @@ export function buildFilterQuery(
   const whereClauses = [`[?e :block/type "${entityType}"]`]
 
   for (const [key, value] of Object.entries(filters)) {
-    if (value !== undefined) {
-      whereClauses.push(`[?e :block/${key} "${value}"]`)
+    if (value !== undefined && value !== null) {
+      whereClauses.push(`[?e :block/${key} "${String(value)}"]`)
     }
   }
 

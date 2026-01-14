@@ -63,7 +63,7 @@ export class SourceFetcher {
    * Note: Automatic local file fetching is not supported in browser environment.
    * Users should use the file picker UI to select files manually.
    */
-  async fetchLocal(_path: string): Promise<string> {
+  fetchLocal(_path: string): Promise<string> {
     // Local file fetching is not supported in browser environment
     // The Logseq plugin runs in a browser context where direct filesystem
     // access is restricted for security reasons.
@@ -72,9 +72,11 @@ export class SourceFetcher {
     // 1. Use the import command with file picker
     // 2. Convert local sources to URL sources (serve files via local server)
     // 3. Use the Logseq assets folder which is accessible via URL
-    throw new Error(
-      'Automatic local file fetching is not supported in browser environment. ' +
-        'Use the import command to select files manually, or convert to a URL source.'
+    return Promise.reject(
+      new Error(
+        'Automatic local file fetching is not supported in browser environment. ' +
+          'Use the import command to select files manually, or convert to a URL source.'
+      )
     )
   }
 
