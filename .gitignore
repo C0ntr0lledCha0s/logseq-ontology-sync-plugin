@@ -29,3 +29,5 @@ coverage/
 # Temporary files
 *.tmp
 .cache/
+
+.claude/github-workflows/
