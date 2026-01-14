@@ -4,6 +4,7 @@
  */
 
 import { logger } from '../utils/logger'
+import { detectFeatures, hasFileSystem } from '../utils/environment'
 import type { TemplateSource, FetchResult } from './types'
 import { FetchError } from './types'
 
@@ -60,24 +61,49 @@ export class SourceFetcher {
   /**
    * Fetch content from a local file path
    *
-   * Note: Automatic local file fetching is not supported in browser environment.
-   * Users should use the file picker UI to select files manually.
+   * @remarks
+   * - In browser environments: Not supported (use file picker UI)
+   * - In Node/Bun environments: Uses fs module for testing
    */
-  fetchLocal(_path: string): Promise<string> {
-    // Local file fetching is not supported in browser environment
-    // The Logseq plugin runs in a browser context where direct filesystem
-    // access is restricted for security reasons.
-    //
-    // For local files, users should:
-    // 1. Use the import command with file picker
-    // 2. Convert local sources to URL sources (serve files via local server)
-    // 3. Use the Logseq assets folder which is accessible via URL
-    return Promise.reject(
-      new Error(
-        'Automatic local file fetching is not supported in browser environment. ' +
-          'Use the import command to select files manually, or convert to a URL source.'
+  async fetchLocal(path: string): Promise<string> {
+    // Check if file system access is available
+    if (!hasFileSystem()) {
+      const features = detectFeatures()
+      logger.warn('Local file access not available', {
+        isBrowser: features.isBrowser,
+        path,
+      })
+
+      return Promise.reject(
+        new Error(
+          'Automatic local file fetching is not supported in browser environment. ' +
+            'Use the import command to select files manually, or convert to a URL source.'
+        )
       )
-    )
+    }
+
+    // In Node/Bun environments, use dynamic import for fs
+    try {
+      logger.debug('Fetching local file', { path })
+
+      // Dynamic import to avoid bundling issues
+      const fs = await import('fs/promises')
+      const content = await fs.readFile(path, 'utf-8')
+
+      if (!content || content.trim().length === 0) {
+        throw new Error('Local file is empty')
+      }
+
+      logger.debug('Local file fetched successfully', {
+        path,
+        size: content.length,
+      })
+
+      return content
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to read local file'
+      throw new Error(`Local file fetch failed: ${message}`)
+    }
   }
 
   /**
@@ -184,15 +210,25 @@ export class SourceFetcher {
   /**
    * Check if a source is reachable
    *
-   * Note: Local sources always return false in browser environment
-   * since we cannot check local file existence.
+   * @remarks
+   * - Local sources: Available in Node/Bun, not in browser
+   * - URL sources: Checks via HEAD request
    */
   async isReachable(source: TemplateSource): Promise<boolean> {
     try {
       if (source.type === 'local') {
-        // Cannot check local file existence in browser environment
-        // Return false to indicate the source cannot be automatically accessed
-        return false
+        // Check if file system is available
+        if (!hasFileSystem()) {
+          return false
+        }
+        // In Node/Bun, check if file exists
+        try {
+          const fs = await import('fs/promises')
+          await fs.access(source.location)
+          return true
+        } catch {
+          return false
+        }
       } else if (source.type === 'url') {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 5000) // Quick check

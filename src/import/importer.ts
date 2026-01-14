@@ -34,6 +34,98 @@ const defaultOptions: Required<ImportOptions> = {
 }
 
 /**
+ * Valid property types for Logseq
+ */
+const VALID_PROPERTY_TYPES = [
+  'default',
+  'number',
+  'date',
+  'datetime',
+  'checkbox',
+  'url',
+  'page',
+  'node',
+]
+
+/**
+ * Validation result for import templates
+ */
+interface ImportValidationResult {
+  valid: boolean
+  errors: string[]
+  warnings: string[]
+}
+
+/**
+ * Validate an import template structure
+ * Provides detailed validation of property types, cardinality, and class structure
+ */
+function validateImportTemplate(template: ParsedTemplate): ImportValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+
+  // Validate properties
+  for (const prop of template.properties) {
+    if (!prop.name || prop.name.trim() === '') {
+      errors.push('Property is missing a name')
+      continue
+    }
+
+    if (!prop.type) {
+      warnings.push(`Property "${prop.name}" is missing type, defaulting to "default"`)
+    } else if (!VALID_PROPERTY_TYPES.includes(prop.type)) {
+      errors.push(
+        `Property "${prop.name}" has invalid type "${prop.type}". ` +
+          `Valid types: ${VALID_PROPERTY_TYPES.join(', ')}`
+      )
+    }
+
+    if (prop.cardinality && !['one', 'many'].includes(prop.cardinality)) {
+      errors.push(
+        `Property "${prop.name}" has invalid cardinality "${prop.cardinality}". ` +
+          `Valid values: one, many`
+      )
+    }
+  }
+
+  // Validate classes
+  for (const cls of template.classes) {
+    if (!cls.name || cls.name.trim() === '') {
+      errors.push('Class is missing a name')
+      continue
+    }
+
+    // Check for self-referential parent
+    if (cls.parent && cls.parent === cls.name) {
+      errors.push(`Class "${cls.name}" cannot be its own parent`)
+    }
+  }
+
+  // Check for duplicate names
+  const propNames = new Set<string>()
+  for (const prop of template.properties) {
+    if (prop.name && propNames.has(prop.name)) {
+      warnings.push(`Duplicate property name: "${prop.name}"`)
+    }
+    if (prop.name) propNames.add(prop.name)
+  }
+
+  const classNames = new Set<string>()
+  for (const cls of template.classes) {
+    if (cls.name && classNames.has(cls.name)) {
+      warnings.push(`Duplicate class name: "${cls.name}"`)
+    }
+    if (cls.name) classNames.add(cls.name)
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+  }
+}
+
+/**
  * Convert parsed EDN to ParsedTemplate structure
  */
 function ednToParsedTemplate(data: Record<string, unknown>): ParsedTemplate {
@@ -61,10 +153,26 @@ function ednToParsedTemplate(data: Record<string, unknown>): ParsedTemplate {
     for (const prop of data['properties']) {
       if (typeof prop === 'object' && prop !== null) {
         const p = prop as Record<string, unknown>
+        const typeStr = String(p['type'] || 'default')
+        // Validate and coerce type to PropertySchemaType
+        const validTypes = [
+          'default',
+          'number',
+          'date',
+          'datetime',
+          'checkbox',
+          'url',
+          'page',
+          'node',
+        ]
+        const type = validTypes.includes(typeStr)
+          ? (typeStr as import('../types').PropertySchemaType)
+          : 'default'
+
         properties.push({
           name: String(p['name'] || ''),
           namespace: p['namespace'] ? String(p['namespace']) : undefined,
-          type: String(p['type'] || 'default'),
+          type,
           description: p['description'] ? String(p['description']) : undefined,
           cardinality: p['cardinality'] === 'many' ? 'many' : 'one',
           required: Boolean(p['required']),
@@ -110,19 +218,43 @@ export class OntologyImporter {
   private parseContent(content: string, validate: boolean = false): ParsedTemplate {
     const data = parseEdn(content)
 
+    // Basic EDN structure validation
+    const isValidEdn = validateEdnTemplate(data)
+    if (!isValidEdn) {
+      throw new Error('Template validation failed: invalid EDN structure')
+    }
+
+    const template = ednToParsedTemplate(data as unknown as Record<string, unknown>)
+
+    // Full template validation if requested
     if (validate) {
-      const isValid = validateEdnTemplate(data)
-      if (!isValid) {
-        throw new Error('Template validation failed: invalid EDN structure')
+      const validation = validateImportTemplate(template)
+
+      // Log warnings but don't fail
+      if (validation.warnings.length > 0) {
+        logger.warn('Template validation warnings', { warnings: validation.warnings })
+      }
+
+      // Fail on errors
+      if (!validation.valid) {
+        throw new Error(
+          `Template validation failed:\n${validation.errors.map((e) => `  - ${e}`).join('\n')}`
+        )
       }
     }
 
-    return ednToParsedTemplate(data as unknown as Record<string, unknown>)
+    return template
   }
 
   /**
    * Get existing ontology from Logseq graph
    * Uses the Logseq API to query existing properties and classes
+   *
+   * @throws Error if the Logseq API is not available (not in plugin context)
+   * @remarks
+   * This method will return an empty ontology if fetching fails due to
+   * query errors (e.g., empty graph, database issues), but will throw
+   * if the Logseq API itself is unavailable.
    */
   private async getExistingOntology(): Promise<ExistingOntology> {
     try {
@@ -153,7 +285,18 @@ export class OntologyImporter {
 
       return { classes, properties }
     } catch (error) {
-      logger.warn('Failed to fetch existing ontology, using empty', error)
+      // Check if this is an API availability error - these should propagate
+      if (error instanceof Error && error.message.includes('not available')) {
+        logger.error('Logseq API not available', error)
+        throw error
+      }
+
+      // For other errors (query failures, etc.), log and return empty
+      // This allows imports to proceed even if the graph is empty or has issues
+      logger.warn('Failed to fetch existing ontology, proceeding with empty state', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        errorType: error instanceof Error ? error.name : typeof error,
+      })
       return createEmptyOntology()
     }
   }
@@ -363,8 +506,10 @@ export class OntologyImporter {
           updatedClasses: [],
           newProperties: [],
           updatedProperties: [],
+          classesToRemove: [],
+          propertiesToRemove: [],
           conflicts: [],
-          summary: { totalNew: 0, totalUpdated: 0, totalConflicts: 0 },
+          summary: { totalNew: 0, totalUpdated: 0, totalRemoved: 0, totalConflicts: 0 },
         },
         applied: { classes: 0, properties: 0 },
         errors,

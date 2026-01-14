@@ -1,7 +1,14 @@
 /**
  * Sync module type definitions
- * Defines interfaces for synchronization state tracking and operations
+ *
+ * Defines interfaces for synchronization state tracking and operations.
+ * Re-exports common types from unified type system.
+ *
+ * @module sync/types
  */
+
+// Re-export from unified types
+export type { SyncStrategy, ConflictResolution } from '../types'
 
 /**
  * Individual entry in the sync history log
@@ -34,7 +41,12 @@ export interface SyncState {
 }
 
 /**
- * Preview of changes that would be applied during sync
+ * Lightweight preview of changes for sync operations
+ *
+ * @remarks
+ * Unlike the full ImportPreview in unified types, this uses string arrays
+ * for efficiency when only names are needed. Use converters to transform
+ * to full ImportPreview when detailed preview is required.
  */
 export interface ImportPreview {
   /** Classes to be added */
@@ -52,6 +64,11 @@ export interface ImportPreview {
 }
 
 /**
+ * Alias for clarity - sync module's lightweight preview
+ */
+export type SyncPreview = ImportPreview
+
+/**
  * Result of a sync operation
  */
 export interface SyncResult {
@@ -66,11 +83,6 @@ export interface SyncResult {
 }
 
 /**
- * Strategy for handling conflicts during sync
- */
-export type SyncStrategy = 'overwrite' | 'merge' | 'keep-local' | 'ask'
-
-/**
  * Configuration for a sync source
  */
 export interface SyncSource {
@@ -83,7 +95,7 @@ export interface SyncSource {
   /** Type of source */
   type: 'url' | 'file' | 'github'
   /** Default sync strategy */
-  defaultStrategy: SyncStrategy
+  defaultStrategy: import('../types').SyncStrategy
 }
 
 /**
@@ -91,7 +103,7 @@ export interface SyncSource {
  */
 export interface SyncOptions {
   /** Strategy for handling conflicts */
-  strategy?: SyncStrategy
+  strategy?: import('../types').SyncStrategy
   /** Whether to apply changes or just preview */
   dryRun?: boolean
   /** Timeout in milliseconds for network operations */
@@ -113,6 +125,19 @@ export interface FetchedContent {
 }
 
 /**
+ * Error codes for sync operations
+ */
+export enum SyncErrorCode {
+  NETWORK_ERROR = 'NETWORK_ERROR',
+  INVALID_SOURCE = 'INVALID_SOURCE',
+  PARSE_ERROR = 'PARSE_ERROR',
+  CONFLICT = 'CONFLICT',
+  STATE_ERROR = 'STATE_ERROR',
+  TIMEOUT = 'TIMEOUT',
+  NOT_FOUND = 'NOT_FOUND',
+}
+
+/**
  * Error specific to sync operations
  */
 export class SyncError extends Error {
@@ -124,17 +149,4 @@ export class SyncError extends Error {
     super(message)
     this.name = 'SyncError'
   }
-}
-
-/**
- * Error codes for sync operations
- */
-export enum SyncErrorCode {
-  NETWORK_ERROR = 'NETWORK_ERROR',
-  INVALID_SOURCE = 'INVALID_SOURCE',
-  PARSE_ERROR = 'PARSE_ERROR',
-  CONFLICT = 'CONFLICT',
-  STATE_ERROR = 'STATE_ERROR',
-  TIMEOUT = 'TIMEOUT',
-  NOT_FOUND = 'NOT_FOUND',
 }

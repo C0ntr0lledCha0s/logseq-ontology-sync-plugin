@@ -1,69 +1,37 @@
 /**
  * Import module type definitions
- * Defines types for the ontology import workflow
+ *
+ * Re-exports unified types for the ontology import workflow.
+ * Module-specific types are defined here.
+ *
+ * @module import/types
  */
 
-/**
- * Class definition representing an ontology class
- */
-export interface ClassDefinition {
-  name: string
-  namespace?: string
-  parent?: string
-  description?: string
-  properties?: string[]
-}
-
-/**
- * Property definition for ontology properties
- */
-export interface PropertyDefinition {
-  name: string
-  namespace?: string
-  type: string
-  description?: string
-  cardinality?: 'one' | 'many'
-  required?: boolean
-}
-
-/**
- * Represents an update to an existing class
- */
-export interface ClassUpdate {
-  name: string
-  before: Partial<ClassDefinition>
-  after: Partial<ClassDefinition>
-  changes: string[]
-}
-
-/**
- * Represents an update to an existing property
- */
-export interface PropertyUpdate {
-  name: string
-  before: Partial<PropertyDefinition>
-  after: Partial<PropertyDefinition>
-  changes: string[]
-}
-
-/**
- * Conflict detected during import comparison
- */
-export interface Conflict {
-  type: 'class' | 'property'
-  name: string
-  reason: string
-  existingValue: unknown
-  newValue: unknown
-  resolution?: 'overwrite' | 'skip' | 'ask'
-}
+// Re-export core types from unified type system
+export type {
+  PropertyDefinition,
+  ClassDefinition,
+  ClassUpdate,
+  PropertyUpdate,
+  Conflict,
+  ConflictResolution,
+  ImportPreview,
+  ImportProgress,
+  ImportError,
+  ImportResult,
+  ExistingOntology,
+} from '../types'
 
 /**
  * Parsed template structure
+ *
+ * @remarks
+ * This is import-module specific as it represents the structure
+ * of a parsed EDN template file.
  */
 export interface ParsedTemplate {
-  classes: ClassDefinition[]
-  properties: PropertyDefinition[]
+  classes: import('../types').ClassDefinition[]
+  properties: import('../types').PropertyDefinition[]
   metadata?: {
     name?: string
     version?: string
@@ -78,68 +46,9 @@ export interface ImportOptions {
   /** Run without making changes */
   dryRun?: boolean
   /** Progress callback */
-  onProgress?: (progress: ImportProgress) => void
+  onProgress?: (progress: import('../types').ImportProgress) => void
   /** Strategy for handling conflicts */
-  conflictStrategy?: 'overwrite' | 'skip' | 'ask'
+  conflictStrategy?: import('../types').ConflictResolution
   /** Whether to validate before import */
   validate?: boolean
-}
-
-/**
- * Progress information during import
- */
-export interface ImportProgress {
-  phase: 'parsing' | 'validating' | 'comparing' | 'importing'
-  current: number
-  total: number
-  message: string
-}
-
-/**
- * Import error details
- */
-export interface ImportError {
-  code: string
-  message: string
-  item?: string
-  details?: unknown
-}
-
-/**
- * Preview of changes that will be made
- */
-export interface ImportPreview {
-  newClasses: ClassDefinition[]
-  updatedClasses: ClassUpdate[]
-  newProperties: PropertyDefinition[]
-  updatedProperties: PropertyUpdate[]
-  conflicts: Conflict[]
-  summary: {
-    totalNew: number
-    totalUpdated: number
-    totalConflicts: number
-  }
-}
-
-/**
- * Result of an import operation
- */
-export interface ImportResult {
-  success: boolean
-  preview: ImportPreview
-  applied: {
-    classes: number
-    properties: number
-  }
-  errors: ImportError[]
-  duration: number
-  dryRun: boolean
-}
-
-/**
- * Existing ontology state from the graph
- */
-export interface ExistingOntology {
-  classes: Map<string, ClassDefinition>
-  properties: Map<string, PropertyDefinition>
 }

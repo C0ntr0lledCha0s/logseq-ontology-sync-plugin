@@ -160,10 +160,13 @@ export function diffTemplate(template: ParsedTemplate, existing: ExistingOntolog
     updatedClasses,
     newProperties,
     updatedProperties,
+    classesToRemove: [],
+    propertiesToRemove: [],
     conflicts,
     summary: {
       totalNew: newClasses.length + newProperties.length,
       totalUpdated: updatedClasses.length + updatedProperties.length,
+      totalRemoved: 0,
       totalConflicts: conflicts.length,
     },
   }
