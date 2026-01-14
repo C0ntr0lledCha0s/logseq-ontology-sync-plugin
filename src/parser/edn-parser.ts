@@ -15,9 +15,13 @@ export interface EdnData {
 export function parseEdn(ednString: string): EdnData {
   try {
     const parsed = parseEDNString(ednString, { mapAs: 'object', keywordAs: 'string' })
+    if (parsed === null || parsed === undefined) {
+      throw new Error('Invalid or empty EDN input')
+    }
     return parsed as EdnData
   } catch (error) {
-    throw new Error(`Failed to parse EDN: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    throw new Error(`Failed to parse EDN: ${message}`)
   }
 }
 
@@ -28,7 +32,8 @@ export function encodeEdn(data: EdnData): string {
   try {
     return toEDNStringFromSimpleObject(data)
   } catch (error) {
-    throw new Error(`Failed to encode EDN: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    throw new Error(`Failed to encode EDN: ${message}`)
   }
 }
 

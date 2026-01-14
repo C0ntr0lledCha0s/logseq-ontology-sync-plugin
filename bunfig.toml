@@ -7,6 +7,5 @@ auto = true
 
 [test]
 # Test configuration for bun test
-preload = []
 coverage = true
 coverageDir = "coverage"

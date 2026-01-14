@@ -1,9 +1,10 @@
 import '@logseq/libs'
+import { logger } from './utils/logger'
 
 const pluginId = 'logseq-ontology-sync'
 
-async function main() {
-  console.log(`[${pluginId}] Plugin loaded`)
+function main(): void {
+  logger.info(`[${pluginId}] Plugin loaded`)
 
   // Register plugin settings
   logseq.useSettingsSchema([
@@ -22,8 +23,8 @@ async function main() {
       key: 'ontology-sync-import',
       label: 'Import Ontology Template',
     },
-    async () => {
-      await logseq.UI.showMsg('Import functionality coming soon!', 'info')
+    () => {
+      void logseq.UI.showMsg('Import functionality coming soon!', 'info')
     }
   )
 
@@ -32,8 +33,8 @@ async function main() {
       key: 'ontology-sync-export',
       label: 'Export Ontology Template',
     },
-    async () => {
-      await logseq.UI.showMsg('Export functionality coming soon!', 'info')
+    () => {
+      void logseq.UI.showMsg('Export functionality coming soon!', 'info')
     }
   )
 
@@ -48,11 +49,11 @@ async function main() {
   })
 
   logseq.provideModel({
-    showOntologyPanel: async () => {
-      await logseq.UI.showMsg('Ontology Sync Panel', 'info')
+    showOntologyPanel: () => {
+      void logseq.UI.showMsg('Ontology Sync Panel', 'info')
     },
   })
 }
 
 // Bootstrap the plugin
-logseq.ready(main).catch(console.error)
+logseq.ready(main).catch((err: unknown) => logger.error('Plugin failed to load', err))

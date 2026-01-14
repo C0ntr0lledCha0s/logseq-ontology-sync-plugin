@@ -27,6 +27,7 @@ describe('EDN Parser', () => {
   })
 
   test('should throw error for invalid EDN', () => {
-    expect(() => parseEdn('invalid edn {')).toThrow()
+    // Unbalanced brackets cause the parser to throw
+    expect(() => parseEdn('{:key "unclosed')).toThrow()
   })
 })
