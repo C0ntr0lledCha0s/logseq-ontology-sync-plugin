@@ -51,50 +51,57 @@ export async function pickFile(accept?: string): Promise<File | null> {
 export type MenuAction = 'import-url' | 'import-file' | 'manage-sources' | 'sync' | 'cancelled'
 
 /**
- * Show the main ontology menu
+ * Show the main ontology menu using sequential confirm dialogs
  */
 export function showOntologyMenu(): MenuAction {
-  const choice = window.prompt(
-    'Ontology Sync\n\n' +
-      'Choose an action:\n\n' +
-      '1 - Import from URL\n' +
-      '2 - Import from File\n' +
-      '3 - Manage Sources\n' +
-      '4 - Sync from Sources\n\n' +
-      'Enter number (1-4):',
-    '1'
+  // First choice: Import or Other
+  const wantsImport = window.confirm(
+    'Ontology Sync\n\n' + 'Click OK to IMPORT a template\n' + 'Click Cancel for other options'
   )
 
-  if (choice === null) {
-    return 'cancelled'
+  if (wantsImport) {
+    // Import submenu: URL or File
+    const wantsUrl = window.confirm(
+      'Import Template\n\n' + 'Click OK to import from URL\n' + 'Click Cancel to import from File'
+    )
+    return wantsUrl ? 'import-url' : 'import-file'
   }
 
-  switch (choice.trim()) {
-    case '1':
-      return 'import-url'
-    case '2':
-      return 'import-file'
-    case '3':
-      return 'manage-sources'
-    case '4':
-      return 'sync'
-    default:
-      return 'cancelled'
-  }
+  // Other options: Sync or Manage
+  const wantsSync = window.confirm(
+    'Other Options\n\n' + 'Click OK to SYNC from sources\n' + 'Click Cancel to MANAGE sources'
+  )
+
+  return wantsSync ? 'sync' : 'manage-sources'
 }
 
 /**
- * Prompt the user for a URL input
+ * Get URL from clipboard
+ * Returns the clipboard content if user confirms, null otherwise
  */
-export function promptForUrl(
-  message: string = 'Enter the URL to import from:',
-  defaultValue: string = ''
-): string | null {
-  const result = window.prompt(message, defaultValue)
-  if (result === null || result.trim() === '') {
+export async function getUrlFromClipboard(): Promise<string | null> {
+  try {
+    const clipboardText = await navigator.clipboard.readText()
+    const trimmed = clipboardText.trim()
+
+    if (!trimmed) {
+      await showMessage('Clipboard is empty. Copy a URL first, then try again.', 'warning')
+      return null
+    }
+
+    // Show what's in clipboard and confirm
+    const confirmed = window.confirm(
+      `Import from URL\n\n` +
+        `URL in clipboard:\n${trimmed.substring(0, 100)}${trimmed.length > 100 ? '...' : ''}\n\n` +
+        `Click OK to import from this URL\n` +
+        `Click Cancel to abort`
+    )
+
+    return confirmed ? trimmed : null
+  } catch {
+    await showMessage('Could not read clipboard. Please copy the URL and try again.', 'error')
     return null
   }
-  return result.trim()
 }
 
 /**

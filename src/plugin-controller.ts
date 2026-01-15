@@ -14,7 +14,7 @@ import {
   showMessage,
   showConfirm,
   showOntologyMenu,
-  promptForUrl,
+  getUrlFromClipboard,
   isValidUrl,
 } from './ui/components'
 import { logger } from './utils/logger'
@@ -136,17 +136,14 @@ export class PluginController {
    * Import ontology from a URL
    */
   private async importFromUrl(): Promise<void> {
-    // Prompt for URL
-    const url = promptForUrl(
-      'Enter the URL to the .edn file:\n\n' +
-        'Supported formats:\n' +
-        '• Direct link to .edn file\n' +
-        '• GitHub raw file URL\n' +
-        '• GitHub release asset URL'
-    )
+    // Show instructions first
+    await showMessage('Copy the URL to your clipboard, then click OK', 'info')
+
+    // Get URL from clipboard
+    const url = await getUrlFromClipboard()
 
     if (!url) {
-      logger.debug('Import from URL cancelled - no URL entered')
+      logger.debug('Import from URL cancelled - no URL provided')
       return
     }
 
