@@ -6,12 +6,24 @@ This file provides context for Claude Code when working on this project.
 
 **logseq-ontology-sync-plugin** is a Logseq plugin for managing and synchronizing ontology templates. It allows users to import, export, and sync class/property definitions from a marketplace of templates hosted on GitHub releases.
 
+> **DB Graphs Only**: This plugin is designed exclusively for Logseq's **database (DB) graph** mode, not the traditional file-based markdown graphs. DB graphs use a structured database with typed properties and classes - features that don't exist in file-based graphs.
+
 ### Key Features
 - Import ontology templates from files or URLs
 - Marketplace integration with GitHub releases
 - Sync templates from configured sources
 - Export current graph ontology
 - Logseq-native UI panel
+
+### Logseq DB Graph Documentation
+
+When researching Logseq APIs or behavior, prioritize these resources:
+- **DB Graph Docs**: https://docs.logseq.com/#/page/db%20graphs
+- **Plugin API (DB)**: https://plugins-doc.logseq.com/ (note: some APIs are DB-specific)
+- **Schema Reference**: https://docs.logseq.com/#/page/properties (for property types, cardinality)
+- **Classes**: https://docs.logseq.com/#/page/classes
+
+Avoid referencing file-based graph documentation for ontology/schema features.
 
 ## Technology Stack
 
@@ -115,13 +127,13 @@ logseq.App.registerUIItem('toolbar', { key, template })
 ```
 
 ### UI Event Handling
-UI templates use `data-on-click` attributes that map to model methods:
+UI uses `data-action` attributes with direct DOM event listeners (more reliable than `data-on-click` in DB mode):
 ```html
-<button data-on-click="importFromFile">Import</button>
+<button data-action="import-file">Import</button>
 ```
 ```typescript
-logseq.provideModel({
-  importFromFile: () => void controller.importFromFile()
+container.querySelector('[data-action="import-file"]')?.addEventListener('click', () => {
+  void controller.importFromFile()
 })
 ```
 
@@ -175,13 +187,23 @@ Available template categories:
 
 ## Important Notes
 
-1. **Browser Environment**: Plugin runs in Logseq's sandboxed iframe. Some browser APIs like `window.prompt()` may not work - use Logseq's native UI methods instead.
+### DB Graph Specifics
 
-2. **No Persistent Storage**: `SourceRegistry` is currently in-memory only. Consider using `logseq.settings` for persistence.
+1. **Plugin Ownership Restrictions**: In DB mode, Logseq enforces plugin ownership - a plugin can only modify properties/classes it created. Attempting to modify entities created by other plugins or manually by the user will fail with "Plugins can only upsert its own properties". The importer handles this gracefully by skipping such entities.
 
-3. **Transactions**: Logseq's transaction API is not truly atomic. The code uses batch operations with manual error handling.
+2. **Name Normalization**: Logseq normalizes all property and class names to lowercase with hyphens replacing spaces (e.g., "First Name" → "first-name"). The diff and import logic accounts for this with case-insensitive matching.
 
-4. **fs/promises Warning**: The `SourceFetcher` dynamically imports `fs/promises` for Node/Bun environments. This shows a Vite warning during build but is intentional.
+3. **Native Export Format**: Logseq DB graphs export ontology using tagged EDN with namespace reader macros (e.g., `#:user.property{...}`). The importer auto-detects and parses both this native format and simplified template format.
+
+### General Plugin Notes
+
+4. **Browser Environment**: Plugin runs in Logseq's sandboxed iframe. Some browser APIs like `window.prompt()` may not work - use Logseq's native UI methods instead.
+
+5. **No Persistent Storage**: `SourceRegistry` is currently in-memory only. Consider using `logseq.settings` for persistence.
+
+6. **Transactions**: Logseq's transaction API is not truly atomic. The code uses batch operations with manual error handling.
+
+7. **fs/promises Warning**: The `SourceFetcher` dynamically imports `fs/promises` for Node/Bun environments. This shows a Vite warning during build but is intentional.
 
 ## Related Issues
 
