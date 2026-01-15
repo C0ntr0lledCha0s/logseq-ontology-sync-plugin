@@ -13,7 +13,7 @@ import {
   pickFile,
   showMessage,
   showConfirm,
-  promptImportSourceType,
+  showOntologyMenu,
   promptForUrl,
   isValidUrl,
 } from './ui/components'
@@ -108,24 +108,27 @@ export class PluginController {
   }
 
   /**
-   * Handle import from URL or file
-   * Prompts user to choose source type and imports accordingly
+   * Handle the main menu shown when clicking toolbar icon
    */
-  async handleImportFromSource(): Promise<void> {
-    try {
-      // Ask user for source type
-      const sourceType = promptImportSourceType()
+  async handleMenu(): Promise<void> {
+    const action = showOntologyMenu()
 
-      if (sourceType === 'url') {
+    switch (action) {
+      case 'import-url':
         await this.importFromUrl()
-      } else {
-        // sourceType === 'file'
+        break
+      case 'import-file':
         await this.handleImport()
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      logger.error('Import from source failed', error)
-      await showMessage(`Import failed: ${message}`, 'error')
+        break
+      case 'manage-sources':
+        await this.handleManageSources()
+        break
+      case 'sync':
+        await this.handleSync()
+        break
+      case 'cancelled':
+        // User cancelled, do nothing
+        break
     }
   }
 

@@ -34,26 +34,26 @@ function main(): void {
 
   // Provide model first (must be before registerUIItem)
   logseq.provideModel({
-    showOntologyPanel: () => {
-      void controller.handleManageSources()
+    showOntologyMenu: () => {
+      void controller.handleMenu()
     },
   })
 
-  // Register UI icon in toolbar
+  // Register UI icon in toolbar - opens main menu
   logseq.App.registerUIItem('toolbar', {
     key: pluginId,
-    template: `<a class="button" data-on-click="showOntologyPanel" title="Ontology Sync"><i class="ti ti-building-arch"></i></a>`,
+    template: `<a class="button" data-on-click="showOntologyMenu" title="Ontology Sync"><i class="ti ti-building-arch"></i></a>`,
   })
 
   // Register UI commands - connected to controller
   logseq.App.registerCommandPalette(
-    { key: 'import', label: 'Ontology: Import Template (File)' },
-    () => void controller.handleImport()
+    { key: 'menu', label: 'Ontology: Open Menu' },
+    () => void controller.handleMenu()
   )
 
   logseq.App.registerCommandPalette(
-    { key: 'import-from-source', label: 'Ontology: Import from URL or File' },
-    () => void controller.handleImportFromSource()
+    { key: 'import', label: 'Ontology: Import from File' },
+    () => void controller.handleImport()
   )
 
   logseq.App.registerCommandPalette(
@@ -62,7 +62,7 @@ function main(): void {
   )
 
   logseq.App.registerCommandPalette(
-    { key: 'sync', label: 'Ontology: Sync from Source' },
+    { key: 'sync', label: 'Ontology: Sync from Sources' },
     () => void controller.handleSync()
   )
 

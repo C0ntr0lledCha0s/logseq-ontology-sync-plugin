@@ -46,25 +46,41 @@ export async function pickFile(accept?: string): Promise<File | null> {
 }
 
 /**
- * Import source type selection
+ * Menu action types
  */
-export type ImportSourceType = 'url' | 'file' | 'cancelled'
+export type MenuAction = 'import-url' | 'import-file' | 'manage-sources' | 'sync' | 'cancelled'
 
 /**
- * Show a dialog to choose import source type (URL or File)
+ * Show the main ontology menu
  */
-export function promptImportSourceType(): ImportSourceType {
-  const result = window.confirm(
-    'Import Ontology Template\n\n' +
-      'Click OK to import from a URL\n' +
-      'Click Cancel to import from a local file'
+export function showOntologyMenu(): MenuAction {
+  const choice = window.prompt(
+    'Ontology Sync\n\n' +
+      'Choose an action:\n\n' +
+      '1 - Import from URL\n' +
+      '2 - Import from File\n' +
+      '3 - Manage Sources\n' +
+      '4 - Sync from Sources\n\n' +
+      'Enter number (1-4):',
+    '1'
   )
-  // OK = URL, Cancel = file
-  // We use a second confirm if they want to cancel completely
-  if (result) {
-    return 'url'
+
+  if (choice === null) {
+    return 'cancelled'
   }
-  return 'file'
+
+  switch (choice.trim()) {
+    case '1':
+      return 'import-url'
+    case '2':
+      return 'import-file'
+    case '3':
+      return 'manage-sources'
+    case '4':
+      return 'sync'
+    default:
+      return 'cancelled'
+  }
 }
 
 /**
