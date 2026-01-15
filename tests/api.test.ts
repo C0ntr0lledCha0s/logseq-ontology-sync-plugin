@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, mock } from 'bun:test'
-import { LogseqOntologyAPI } from '../src/api/ontology-api'
+import { LogseqOntologyAPI, OntologyAPIError } from '../src/api/ontology-api'
 import { buildFilterQuery } from '../src/api/queries'
 import type { PropertyDefinition, ClassDefinition } from '../src/api/types'
 
@@ -282,8 +282,30 @@ describe('LogseqOntologyAPI', () => {
       expect(call.properties[EXPECTED_PROPERTY_KEYS.classType]).toBe('class')
       expect(call.properties[EXPECTED_PROPERTY_KEYS.classParent]).toBe('ParentClass')
       expect(call.properties[EXPECTED_PROPERTY_KEYS.description]).toBe('A test class')
+      // Properties are normalized to lowercase to match Logseq's internal format
       expect(call.properties[EXPECTED_PROPERTY_KEYS.classProperties]).toEqual(['prop1', 'prop2'])
       expect(call.properties[EXPECTED_PROPERTY_KEYS.icon]).toBe('📦')
+    })
+
+    test('should normalize property names to lowercase when creating class', async () => {
+      getPageReturnsNull = true
+
+      const def: ClassDefinition = {
+        name: 'TestClass',
+        properties: ['FirstName', 'Last Name', 'EMAIL'],
+      }
+
+      await api.createClass(def)
+
+      expect(createPageCalls).toHaveLength(1)
+      const call = createPageCalls[0]!
+
+      // Properties should be normalized: lowercase, spaces replaced with hyphens
+      expect(call.properties[EXPECTED_PROPERTY_KEYS.classProperties]).toEqual([
+        'firstname',
+        'last-name',
+        'email',
+      ])
     })
 
     test('should throw when updating class with no valid blocks', async () => {
@@ -414,6 +436,35 @@ describe('LogseqOntologyAPI', () => {
       expect(result.succeeded).toBe(2)
       expect(result.failed).toBe(1)
       expect(result.errors).toHaveLength(1)
+    })
+  })
+})
+
+describe('OntologyAPIError', () => {
+  describe('isDuplicate', () => {
+    test('should return true for DUPLICATE_PROPERTY code', () => {
+      const error = new OntologyAPIError('Property exists', 'DUPLICATE_PROPERTY')
+      expect(error.isDuplicate()).toBe(true)
+    })
+
+    test('should return true for DUPLICATE_CLASS code', () => {
+      const error = new OntologyAPIError('Class exists', 'DUPLICATE_CLASS')
+      expect(error.isDuplicate()).toBe(true)
+    })
+
+    test('should return true for PLUGIN_OWNERSHIP_RESTRICTED code', () => {
+      const error = new OntologyAPIError('Cannot modify', 'PLUGIN_OWNERSHIP_RESTRICTED')
+      expect(error.isDuplicate()).toBe(true)
+    })
+
+    test('should return false for other error codes', () => {
+      const error = new OntologyAPIError('Failed', 'CREATE_PROPERTY_FAILED')
+      expect(error.isDuplicate()).toBe(false)
+    })
+
+    test('should return false for validation errors', () => {
+      const error = new OntologyAPIError('Invalid', 'INVALID_PROPERTY')
+      expect(error.isDuplicate()).toBe(false)
     })
   })
 })

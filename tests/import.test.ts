@@ -83,6 +83,59 @@ describe('Import Module', () => {
       expect(result.summary.totalNew).toBe(2) // 1 class + 1 property
       expect(result.summary.totalUpdated).toBe(1)
     })
+
+    test('should match classes case-insensitively', () => {
+      const template: ParsedTemplate = {
+        classes: [{ name: 'PERSON', description: 'Updated' }],
+        properties: [],
+      }
+      const existing: ExistingOntology = {
+        classes: new Map([['person', { name: 'person', description: 'Original' }]]),
+        properties: new Map(),
+      }
+
+      const result = diffTemplate(template, existing)
+
+      // Should find as update, not new (case-insensitive match)
+      expect(result.newClasses).toHaveLength(0)
+      expect(result.updatedClasses).toHaveLength(1)
+      expect(result.updatedClasses[0]?.name).toBe('PERSON')
+    })
+
+    test('should match properties case-insensitively', () => {
+      const template: ParsedTemplate = {
+        classes: [],
+        properties: [{ name: 'Email', type: 'default', description: 'Updated' }],
+      }
+      const existing: ExistingOntology = {
+        classes: new Map(),
+        properties: new Map([['email', { name: 'email', type: 'default' }]]),
+      }
+
+      const result = diffTemplate(template, existing)
+
+      // Should find as update (case-insensitive match), not as new
+      expect(result.newProperties).toHaveLength(0)
+      expect(result.updatedProperties).toHaveLength(1)
+      expect(result.updatedProperties[0]?.name).toBe('Email')
+    })
+
+    test('should match properties with spaces normalized to hyphens', () => {
+      const template: ParsedTemplate = {
+        classes: [],
+        properties: [{ name: 'First Name', type: 'default', description: 'Updated' }],
+      }
+      const existing: ExistingOntology = {
+        classes: new Map(),
+        properties: new Map([['first-name', { name: 'first-name', type: 'default' }]]),
+      }
+
+      const result = diffTemplate(template, existing)
+
+      // Should find as update (normalized: "First Name" -> "first-name")
+      expect(result.newProperties).toHaveLength(0)
+      expect(result.updatedProperties).toHaveLength(1)
+    })
   })
 
   describe('OntologyImporter', () => {
@@ -145,6 +198,60 @@ describe('Import Module', () => {
 
       expect(result.success).toBe(false)
       expect(result.errors.length).toBeGreaterThan(0)
+    })
+
+    test('should parse native Logseq database export format', async () => {
+      const importer = new OntologyImporter()
+      // Native format uses tagged EDN with namespace reader macros
+      const content = `{
+        :properties #:user.property{
+          :email-abc123 {
+            :block/title "email"
+            :db/cardinality "db.cardinality/one"
+            :logseq.property/type "url"
+          }
+          :status-def456 {
+            :block/title "status"
+            :db/cardinality "db.cardinality/one"
+            :logseq.property/type "default"
+          }
+        }
+        :classes #:user.class{
+          :person-ghi789 {
+            :block/title "Person"
+            :build/class-properties ["user.property/email-abc123"]
+          }
+        }
+      }`
+
+      const preview = await importer.preview(content)
+
+      // Should parse properties from native format
+      expect(preview.newProperties.length).toBeGreaterThanOrEqual(1)
+      const emailProp = preview.newProperties.find(p => p.name === 'email')
+      expect(emailProp).toBeDefined()
+      expect(emailProp?.type).toBe('url')
+
+      // Should parse classes from native format
+      expect(preview.newClasses.length).toBeGreaterThanOrEqual(1)
+      const personClass = preview.newClasses.find(c => c.name === 'Person')
+      expect(personClass).toBeDefined()
+    })
+
+    test('should handle simplified template format with keywords', async () => {
+      const importer = new OntologyImporter()
+      // Standard EDN format with keyword keys (colons)
+      const content = `{
+        :classes [{:name "TestClass" :description "A test class"}]
+        :properties [{:name "testProp" :type :default}]
+      }`
+
+      const preview = await importer.preview(content)
+
+      expect(preview.newClasses).toHaveLength(1)
+      expect(preview.newClasses[0]?.name).toBe('TestClass')
+      expect(preview.newProperties).toHaveLength(1)
+      expect(preview.newProperties[0]?.name).toBe('testProp')
     })
 
     test('should report unresolved conflicts', async () => {
