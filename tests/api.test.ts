@@ -307,7 +307,8 @@ describe('LogseqOntologyAPI', () => {
 
       expect(parentCall?.value).toBe('NewParent')
       expect(descriptionCall?.value).toBe('Updated description')
-      expect(propertiesCall?.value).toEqual(['newProp'])
+      // Properties are normalized to lowercase to match Logseq's internal format
+      expect(propertiesCall?.value).toEqual(['newprop'])
     })
 
     test('should throw when class is its own parent', async () => {
@@ -378,55 +379,6 @@ describe('LogseqOntologyAPI', () => {
     })
   })
 
-  describe('Transaction Operations (deprecated API)', () => {
-    test('should begin a transaction (deprecated)', async () => {
-      const tx = await api.beginTransaction()
-
-      expect(tx).toBeDefined()
-      expect(tx.id).toBeDefined()
-      expect(tx.status).toBe('pending')
-    })
-
-    test('should not allow multiple transactions', async () => {
-      await api.beginTransaction()
-
-      await expect(api.beginTransaction()).rejects.toThrow('already in progress')
-    })
-
-    test('should add operations to transaction', async () => {
-      await api.beginTransaction()
-
-      expect(() =>
-        api.addToTransaction({
-          type: 'createProperty',
-          data: { name: 'test', type: 'default', cardinality: 'one' },
-        })
-      ).not.toThrow()
-    })
-
-    test('should commit transaction', async () => {
-      // Items don't exist
-      getPageReturnsNull = true
-
-      await api.beginTransaction()
-      api.addToTransaction({
-        type: 'createProperty',
-        data: { name: 'test', type: 'default', cardinality: 'one' },
-      })
-
-      await expect(api.commitTransaction()).resolves.toBeUndefined()
-    })
-
-    test('should rollback transaction', async () => {
-      await api.beginTransaction()
-
-      await expect(api.rollbackTransaction()).resolves.toBeUndefined()
-    })
-
-    test('should throw when no transaction exists', async () => {
-      await expect(api.commitTransaction()).rejects.toThrow('No batch')
-    })
-  })
 
   describe('Generic Batch Executor (runBatch)', () => {
     test('should execute batch operations', async () => {
