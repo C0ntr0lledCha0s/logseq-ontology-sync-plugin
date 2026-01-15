@@ -5,8 +5,26 @@
  *
  * @remarks
  * This API wraps the Logseq Plugin API to provide ontology-specific operations.
- * Note that batch operations do NOT provide true atomicity - if an operation
- * fails mid-batch, previous operations will NOT be rolled back.
+ *
+ * ## Batch Operations (Non-Atomic)
+ *
+ * **IMPORTANT:** Batch operations do NOT provide true atomicity or transactions.
+ * If operation 3 of 5 fails:
+ * - Operations 1-2 are ALREADY persisted and will NOT be rolled back
+ * - Operations 4-5 will NOT be executed
+ * - The result will include `appliedItems` for manual cleanup if needed
+ *
+ * For operations that must succeed or fail together, consider:
+ * - Validating all data before starting the batch
+ * - Implementing application-level rollback using the `appliedItems` list
+ * - Using dry-run mode to preview changes first
+ *
+ * ## Deprecated Transaction API
+ *
+ * The legacy transaction methods (`beginTransaction`, `commitTransaction`,
+ * `rollbackTransaction`) are deprecated and internally use the batch API.
+ * The `rollbackTransaction` method does NOT actually undo changes - it only
+ * cancels pending operations. Use the batch API directly for new code.
  */
 
 import { logger } from '../utils/logger'
@@ -163,9 +181,47 @@ function validatePropertyDefinition(def: PropertyDefinition): void {
 
 /**
  * Validate class definition
+ *
+ * @remarks
+ * This validates:
+ * - Class name is valid (non-empty, proper format)
+ * - Parent reference is not self-referential
+ * - Property references are strings (if provided)
+ *
+ * Note: This does NOT validate that referenced classes or properties exist
+ * in the graph (that would require async API calls). Use `validateReferences`
+ * for deep validation if needed.
  */
 function validateClassDefinition(def: ClassDefinition): void {
   validateName(def.name, 'class')
+
+  // Check for self-referential parent
+  if (def.parent && def.parent === def.name) {
+    throw new OntologyAPIError(
+      `Class cannot be its own parent: ${def.name}`,
+      'CIRCULAR_REFERENCE',
+      { name: def.name, parent: def.parent }
+    )
+  }
+
+  // Validate property references are strings
+  if (def.properties) {
+    if (!Array.isArray(def.properties)) {
+      throw new OntologyAPIError('Class properties must be an array', 'INVALID_PROPERTIES', {
+        name: def.name,
+        properties: def.properties,
+      })
+    }
+    for (const prop of def.properties) {
+      if (typeof prop !== 'string') {
+        throw new OntologyAPIError(
+          `Class property reference must be a string: ${String(prop)}`,
+          'INVALID_PROPERTY_REFERENCE',
+          { name: def.name, property: prop }
+        )
+      }
+    }
+  }
 }
 
 /**
@@ -323,11 +379,25 @@ export class LogseqOntologyAPI {
    * @param name - Property name (used as identifier)
    * @param updates - Partial property definition with fields to update
    * @throws OntologyAPIError if property not found or update fails
+   *
+   * @remarks
+   * Properties in Logseq can be stored either on the page itself or on the first block.
+   * This method attempts to update the first block if it exists, otherwise it will
+   * throw an error since page-level property updates require different handling.
    */
   async updateProperty(name: string, updates: Partial<PropertyDefinition>): Promise<void> {
     validateName(name, 'property')
 
-    logger.debug('Updating property', { name, updates: Object.keys(updates) })
+    // Early return if there's nothing to update
+    const updateKeys = Object.keys(updates).filter(
+      (k) => updates[k as keyof PropertyDefinition] !== undefined
+    )
+    if (updateKeys.length === 0) {
+      logger.debug('No updates provided for property', { name })
+      return
+    }
+
+    logger.debug('Updating property', { name, updates: updateKeys })
 
     if (!isLogseqAvailable()) {
       throw new OntologyAPIError('Logseq API not available', 'LOGSEQ_NOT_AVAILABLE')
@@ -345,34 +415,32 @@ export class LogseqOntologyAPI {
       // Get page blocks to find where to update properties
       const blocks = await api.Editor.getPageBlocksTree(name)
 
-      if (!blocks || blocks.length === 0) {
-        // Page exists but has no blocks - this is unusual for a property page
-        // Log a warning but continue - the property page metadata may still be valid
-        logger.warn('Property page has no blocks, cannot update block properties', { name })
-        return
-      }
+      // Find a valid block to update
+      // Property pages should have at least one block with a uuid
+      const targetBlock = this.findValidBlock(blocks)
 
-      const firstBlock = blocks[0] as LogseqBlock
-      if (!firstBlock || !firstBlock.uuid) {
+      if (!targetBlock) {
+        // No valid blocks found - this is a structural issue
         throw new OntologyAPIError(
-          `Property page has invalid block structure: ${name}`,
-          'INVALID_PAGE_STRUCTURE',
-          { name }
+          `Property page "${name}" has no valid blocks to update. ` +
+            `The page may be empty or have an invalid structure.`,
+          'NO_VALID_BLOCKS',
+          { name, blocksFound: blocks?.length ?? 0 }
         )
       }
 
-      // Update properties on the first block
+      // Update properties on the target block
       const updatePromises: Promise<void>[] = []
 
       if (updates.type !== undefined) {
         updatePromises.push(
-          api.Editor.upsertBlockProperty(firstBlock.uuid, 'property/schema-type', updates.type)
+          api.Editor.upsertBlockProperty(targetBlock.uuid, 'property/schema-type', updates.type)
         )
       }
       if (updates.cardinality !== undefined) {
         updatePromises.push(
           api.Editor.upsertBlockProperty(
-            firstBlock.uuid,
+            targetBlock.uuid,
             'property/cardinality',
             updates.cardinality
           )
@@ -380,20 +448,27 @@ export class LogseqOntologyAPI {
       }
       if (updates.description !== undefined) {
         updatePromises.push(
-          api.Editor.upsertBlockProperty(firstBlock.uuid, 'description', updates.description)
+          api.Editor.upsertBlockProperty(targetBlock.uuid, 'description', updates.description)
         )
       }
       if (updates.hide !== undefined) {
         updatePromises.push(
-          api.Editor.upsertBlockProperty(firstBlock.uuid, 'property/hide?', updates.hide)
+          api.Editor.upsertBlockProperty(targetBlock.uuid, 'property/hide?', updates.hide)
         )
       }
       if (updates.title !== undefined) {
-        updatePromises.push(api.Editor.upsertBlockProperty(firstBlock.uuid, 'title', updates.title))
+        updatePromises.push(
+          api.Editor.upsertBlockProperty(targetBlock.uuid, 'title', updates.title)
+        )
+      }
+
+      if (updatePromises.length === 0) {
+        logger.debug('No applicable updates for property', { name })
+        return
       }
 
       await Promise.all(updatePromises)
-      logger.info('Property updated', { name })
+      logger.info('Property updated', { name, updatedFields: updateKeys })
     } catch (error) {
       if (error instanceof OntologyAPIError) throw error
       const message = error instanceof Error ? error.message : 'Unknown error'
@@ -518,11 +593,25 @@ export class LogseqOntologyAPI {
    * @param name - Class name (used as identifier)
    * @param updates - Partial class definition with fields to update
    * @throws OntologyAPIError if class not found or update fails
+   *
+   * @remarks
+   * Classes in Logseq can be stored either on the page itself or on the first block.
+   * This method attempts to update the first block if it exists, otherwise it will
+   * throw an error since page-level property updates require different handling.
    */
   async updateClass(name: string, updates: Partial<ClassDefinition>): Promise<void> {
     validateName(name, 'class')
 
-    logger.debug('Updating class', { name, updates: Object.keys(updates) })
+    // Early return if there's nothing to update
+    const updateKeys = Object.keys(updates).filter(
+      (k) => updates[k as keyof ClassDefinition] !== undefined
+    )
+    if (updateKeys.length === 0) {
+      logger.debug('No updates provided for class', { name })
+      return
+    }
+
+    logger.debug('Updating class', { name, updates: updateKeys })
 
     if (!isLogseqAvailable()) {
       throw new OntologyAPIError('Logseq API not available', 'LOGSEQ_NOT_AVAILABLE')
@@ -540,47 +629,53 @@ export class LogseqOntologyAPI {
       // Get page blocks
       const blocks = await api.Editor.getPageBlocksTree(name)
 
-      if (!blocks || blocks.length === 0) {
-        logger.warn('Class page has no blocks, cannot update block properties', { name })
-        return
-      }
+      // Find a valid block to update
+      const targetBlock = this.findValidBlock(blocks)
 
-      const firstBlock = blocks[0] as LogseqBlock
-      if (!firstBlock || !firstBlock.uuid) {
+      if (!targetBlock) {
+        // No valid blocks found - this is a structural issue
         throw new OntologyAPIError(
-          `Class page has invalid block structure: ${name}`,
-          'INVALID_PAGE_STRUCTURE',
-          { name }
+          `Class page "${name}" has no valid blocks to update. ` +
+            `The page may be empty or have an invalid structure.`,
+          'NO_VALID_BLOCKS',
+          { name, blocksFound: blocks?.length ?? 0 }
         )
       }
 
-      // Update properties on the first block
+      // Update properties on the target block
       const updatePromises: Promise<void>[] = []
 
       if (updates.description !== undefined) {
         updatePromises.push(
-          api.Editor.upsertBlockProperty(firstBlock.uuid, 'description', updates.description)
+          api.Editor.upsertBlockProperty(targetBlock.uuid, 'description', updates.description)
         )
       }
       if (updates.parent !== undefined) {
         updatePromises.push(
-          api.Editor.upsertBlockProperty(firstBlock.uuid, 'class/parent', updates.parent)
+          api.Editor.upsertBlockProperty(targetBlock.uuid, 'class/parent', updates.parent)
         )
       }
       if (updates.properties !== undefined) {
         updatePromises.push(
-          api.Editor.upsertBlockProperty(firstBlock.uuid, 'class/properties', updates.properties)
+          api.Editor.upsertBlockProperty(targetBlock.uuid, 'class/properties', updates.properties)
         )
       }
       if (updates.icon !== undefined) {
-        updatePromises.push(api.Editor.upsertBlockProperty(firstBlock.uuid, 'icon', updates.icon))
+        updatePromises.push(api.Editor.upsertBlockProperty(targetBlock.uuid, 'icon', updates.icon))
       }
       if (updates.title !== undefined) {
-        updatePromises.push(api.Editor.upsertBlockProperty(firstBlock.uuid, 'title', updates.title))
+        updatePromises.push(
+          api.Editor.upsertBlockProperty(targetBlock.uuid, 'title', updates.title)
+        )
+      }
+
+      if (updatePromises.length === 0) {
+        logger.debug('No applicable updates for class', { name })
+        return
       }
 
       await Promise.all(updatePromises)
-      logger.info('Class updated', { name })
+      logger.info('Class updated', { name, updatedFields: updateKeys })
     } catch (error) {
       if (error instanceof OntologyAPIError) throw error
       const message = error instanceof Error ? error.message : 'Unknown error'
@@ -978,13 +1073,66 @@ export class LogseqOntologyAPI {
     const name =
       operation.id || (typeof operation.data.name === 'string' ? operation.data.name : '')
 
-    // Best-effort conversion of legacy data to new format
-    // This won't validate, but addToBatch() will handle validation
+    // Validate operation type before casting
+    const validTypes: BatchOperation['type'][] = [
+      'createProperty',
+      'updateProperty',
+      'deleteProperty',
+      'createClass',
+      'updateClass',
+      'deleteClass',
+    ]
+
+    if (!validTypes.includes(operation.type as BatchOperation['type'])) {
+      logger.warn('addToTransaction() called with invalid operation type', {
+        type: operation.type,
+      })
+      return
+    }
+
+    // Convert legacy data format to new format with proper type checking
+    const batchData = this.convertLegacyData(operation.type, operation.data)
+
     this.addToBatch({
       type: operation.type as BatchOperation['type'],
       name,
-      data: operation.data as unknown as PropertyDefinition | ClassDefinition,
+      data: batchData,
     })
+  }
+
+  /**
+   * Convert legacy transaction data to properly typed batch data
+   */
+  private convertLegacyData(
+    type: string,
+    data: Record<string, unknown>
+  ): PropertyDefinition | ClassDefinition | Partial<PropertyDefinition> | Partial<ClassDefinition> {
+    if (type.includes('Property')) {
+      // Property operation - extract relevant fields
+      return {
+        name: typeof data.name === 'string' ? data.name : '',
+        type: typeof data.type === 'string' ? (data.type as PropertyDefinition['type']) : 'default',
+        cardinality:
+          typeof data.cardinality === 'string'
+            ? (data.cardinality as PropertyDefinition['cardinality'])
+            : 'one',
+        description: typeof data.description === 'string' ? data.description : undefined,
+        title: typeof data.title === 'string' ? data.title : undefined,
+        hide: typeof data.hide === 'boolean' ? data.hide : undefined,
+      } satisfies Partial<PropertyDefinition>
+    } else {
+      // Class operation - extract relevant fields
+      return {
+        name: typeof data.name === 'string' ? data.name : '',
+        parent: typeof data.parent === 'string' ? data.parent : undefined,
+        description: typeof data.description === 'string' ? data.description : undefined,
+        title: typeof data.title === 'string' ? data.title : undefined,
+        properties: Array.isArray(data.properties)
+          ? data.properties.filter((p): p is string => typeof p === 'string')
+          : undefined,
+        icon: typeof data.icon === 'string' ? data.icon : undefined,
+      } satisfies Partial<ClassDefinition>
+    }
   }
 
   /**
@@ -1009,6 +1157,43 @@ export class LogseqOntologyAPI {
   // ==========================================================================
   // Private Helpers
   // ==========================================================================
+
+  /**
+   * Find a valid block with a uuid in the blocks array
+   *
+   * @param blocks - Array of blocks from getPageBlocksTree
+   * @returns The first valid block with a uuid, or null if none found
+   *
+   * @remarks
+   * Logseq pages may have multiple blocks, and not all blocks may have valid uuids.
+   * This method searches for the first block that has a valid uuid property,
+   * which is required for updating block properties.
+   */
+  private findValidBlock(blocks: unknown[] | null): LogseqBlock | null {
+    if (!blocks || !Array.isArray(blocks) || blocks.length === 0) {
+      return null
+    }
+
+    // Check each block for a valid uuid
+    for (const block of blocks) {
+      if (this.isValidBlock(block)) {
+        return block
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Type guard to check if a value is a valid LogseqBlock with uuid
+   */
+  private isValidBlock(value: unknown): value is LogseqBlock {
+    if (!value || typeof value !== 'object') {
+      return false
+    }
+    const block = value as Record<string, unknown>
+    return typeof block.uuid === 'string' && block.uuid.length > 0
+  }
 
   /**
    * Execute a single batch operation

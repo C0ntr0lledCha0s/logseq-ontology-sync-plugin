@@ -409,8 +409,8 @@ export function importPreviewToUnified(preview: ImportModulePreview): ImportPrev
     })),
     updatedClasses: preview.updatedClasses.map((u) => ({
       name: u.name,
-      before: u.before as Partial<ClassDefinition>,
-      after: u.after as Partial<ClassDefinition>,
+      before: u.before,
+      after: u.after,
       changes: u.changes,
     })),
     newProperties: preview.newProperties.map((p) => ({

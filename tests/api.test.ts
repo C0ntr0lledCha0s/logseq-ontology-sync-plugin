@@ -3,19 +3,63 @@ import { LogseqOntologyAPI } from '../src/api/ontology-api'
 import { buildFilterQuery } from '../src/api/queries'
 import type { PropertyDefinition, ClassDefinition } from '../src/api/types'
 
+// ============================================================================
+// Mock Configuration
+// ============================================================================
+
 // Create dynamic mock that can be configured per test
 let getPageReturnsNull = false
+let getPageBlocksTreeReturnsEmpty = false
+let getPageBlocksTreeReturnsInvalid = false
 
-// Mock the logseq global
+// Track calls to validate API contracts
+interface CreatePageCall {
+  name: string
+  properties: Record<string, unknown>
+  options?: { redirect?: boolean }
+}
+
+interface UpsertBlockPropertyCall {
+  blockUuid: string
+  propertyName: string
+  value: unknown
+}
+
+const createPageCalls: CreatePageCall[] = []
+const upsertBlockPropertyCalls: UpsertBlockPropertyCall[] = []
+
+// Expected property names for Logseq API
+const EXPECTED_PROPERTY_KEYS = {
+  // Property page keys
+  propertyType: 'block/type',
+  propertySchemaType: 'property/schema-type',
+  propertyCardinality: 'property/cardinality',
+  propertyHide: 'property/hide?',
+  propertyClasses: 'property/classes',
+  // Class page keys
+  classType: 'block/type',
+  classParent: 'class/parent',
+  classProperties: 'class/properties',
+  // Common keys
+  description: 'description',
+  title: 'title',
+  icon: 'icon',
+  schemaVersion: 'schema-version',
+}
+
+// Mock the logseq global with enhanced tracking
 const mockLogseq = {
   Editor: {
-    createPage: mock(async (name: string, properties: Record<string, unknown>) => ({
-      id: Date.now(),
-      uuid: crypto.randomUUID(),
-      name,
-      originalName: name,
-      properties,
-    })),
+    createPage: mock(async (name: string, properties: Record<string, unknown>, options?: { redirect?: boolean }) => {
+      createPageCalls.push({ name, properties, options })
+      return {
+        id: Date.now(),
+        uuid: crypto.randomUUID(),
+        name,
+        originalName: name,
+        properties,
+      }
+    }),
     getPage: mock(async (name: string) => {
       if (getPageReturnsNull) {
         return null
@@ -28,10 +72,21 @@ const mockLogseq = {
       }
     }),
     deletePage: mock(async () => undefined),
-    getPageBlocksTree: mock(async () => [
-      { uuid: crypto.randomUUID(), content: '' },
-    ]),
-    upsertBlockProperty: mock(async () => undefined),
+    getPageBlocksTree: mock(async () => {
+      if (getPageBlocksTreeReturnsEmpty) {
+        return []
+      }
+      if (getPageBlocksTreeReturnsInvalid) {
+        return [{ content: 'no uuid here' }]
+      }
+      return [
+        { uuid: crypto.randomUUID(), content: '' },
+      ]
+    }),
+    upsertBlockProperty: mock(async (blockUuid: string, propertyName: string, value: unknown) => {
+      upsertBlockPropertyCalls.push({ blockUuid, propertyName, value })
+      return undefined
+    }),
   },
   DB: {
     datascriptQuery: mock(async () => []),
@@ -55,6 +110,11 @@ describe('LogseqOntologyAPI', () => {
     mockLogseq.DB.datascriptQuery.mockClear()
     // Reset state
     getPageReturnsNull = false
+    getPageBlocksTreeReturnsEmpty = false
+    getPageBlocksTreeReturnsInvalid = false
+    // Clear tracking arrays
+    createPageCalls.length = 0
+    upsertBlockPropertyCalls.length = 0
   })
 
   describe('Property Operations', () => {
@@ -102,6 +162,63 @@ describe('LogseqOntologyAPI', () => {
 
       expect(properties).toBeInstanceOf(Map)
     })
+
+    test('should pass correct property keys to Logseq API', async () => {
+      getPageReturnsNull = true
+
+      const def: PropertyDefinition = {
+        name: 'test-property',
+        type: 'number',
+        cardinality: 'many',
+        description: 'A test property',
+        hide: true,
+        classes: ['Person', 'Organization'],
+      }
+
+      await api.createProperty(def)
+
+      expect(createPageCalls).toHaveLength(1)
+      const call = createPageCalls[0]!
+
+      // Verify property keys match Logseq API expectations
+      expect(call.properties[EXPECTED_PROPERTY_KEYS.propertyType]).toBe('property')
+      expect(call.properties[EXPECTED_PROPERTY_KEYS.propertySchemaType]).toBe('number')
+      expect(call.properties[EXPECTED_PROPERTY_KEYS.propertyCardinality]).toBe('many')
+      expect(call.properties[EXPECTED_PROPERTY_KEYS.description]).toBe('A test property')
+      expect(call.properties[EXPECTED_PROPERTY_KEYS.propertyHide]).toBe(true)
+      expect(call.properties[EXPECTED_PROPERTY_KEYS.propertyClasses]).toEqual(['Person', 'Organization'])
+    })
+
+    test('should throw when updating property with no valid blocks', async () => {
+      getPageBlocksTreeReturnsEmpty = true
+
+      await expect(api.updateProperty('test-property', { title: 'Updated' }))
+        .rejects.toThrow('no valid blocks')
+    })
+
+    test('should throw when updating property with invalid block structure', async () => {
+      getPageBlocksTreeReturnsInvalid = true
+
+      await expect(api.updateProperty('test-property', { title: 'Updated' }))
+        .rejects.toThrow('no valid blocks')
+    })
+
+    test('should pass correct keys when updating property', async () => {
+      await api.updateProperty('test-property', {
+        type: 'date',
+        cardinality: 'one',
+        description: 'Updated description',
+      })
+
+      // Verify upsert calls use correct property names
+      const typeCall = upsertBlockPropertyCalls.find(c => c.propertyName === EXPECTED_PROPERTY_KEYS.propertySchemaType)
+      const cardinalityCall = upsertBlockPropertyCalls.find(c => c.propertyName === EXPECTED_PROPERTY_KEYS.propertyCardinality)
+      const descriptionCall = upsertBlockPropertyCalls.find(c => c.propertyName === EXPECTED_PROPERTY_KEYS.description)
+
+      expect(typeCall?.value).toBe('date')
+      expect(cardinalityCall?.value).toBe('one')
+      expect(descriptionCall?.value).toBe('Updated description')
+    })
   })
 
   describe('Class Operations', () => {
@@ -143,6 +260,76 @@ describe('LogseqOntologyAPI', () => {
       const classes = await api.getExistingClasses()
 
       expect(classes).toBeInstanceOf(Map)
+    })
+
+    test('should pass correct class keys to Logseq API', async () => {
+      getPageReturnsNull = true
+
+      const def: ClassDefinition = {
+        name: 'TestClass',
+        parent: 'ParentClass',
+        description: 'A test class',
+        properties: ['prop1', 'prop2'],
+        icon: '📦',
+      }
+
+      await api.createClass(def)
+
+      expect(createPageCalls).toHaveLength(1)
+      const call = createPageCalls[0]!
+
+      // Verify class keys match Logseq API expectations
+      expect(call.properties[EXPECTED_PROPERTY_KEYS.classType]).toBe('class')
+      expect(call.properties[EXPECTED_PROPERTY_KEYS.classParent]).toBe('ParentClass')
+      expect(call.properties[EXPECTED_PROPERTY_KEYS.description]).toBe('A test class')
+      expect(call.properties[EXPECTED_PROPERTY_KEYS.classProperties]).toEqual(['prop1', 'prop2'])
+      expect(call.properties[EXPECTED_PROPERTY_KEYS.icon]).toBe('📦')
+    })
+
+    test('should throw when updating class with no valid blocks', async () => {
+      getPageBlocksTreeReturnsEmpty = true
+
+      await expect(api.updateClass('TestClass', { title: 'Updated' }))
+        .rejects.toThrow('no valid blocks')
+    })
+
+    test('should pass correct keys when updating class', async () => {
+      await api.updateClass('TestClass', {
+        parent: 'NewParent',
+        description: 'Updated description',
+        properties: ['newProp'],
+      })
+
+      // Verify upsert calls use correct property names
+      const parentCall = upsertBlockPropertyCalls.find(c => c.propertyName === EXPECTED_PROPERTY_KEYS.classParent)
+      const descriptionCall = upsertBlockPropertyCalls.find(c => c.propertyName === EXPECTED_PROPERTY_KEYS.description)
+      const propertiesCall = upsertBlockPropertyCalls.find(c => c.propertyName === EXPECTED_PROPERTY_KEYS.classProperties)
+
+      expect(parentCall?.value).toBe('NewParent')
+      expect(descriptionCall?.value).toBe('Updated description')
+      expect(propertiesCall?.value).toEqual(['newProp'])
+    })
+
+    test('should throw when class is its own parent', async () => {
+      getPageReturnsNull = true
+
+      const def: ClassDefinition = {
+        name: 'SelfReference',
+        parent: 'SelfReference',
+      }
+
+      await expect(api.createClass(def)).rejects.toThrow('cannot be its own parent')
+    })
+
+    test('should throw when class properties is not an array', async () => {
+      getPageReturnsNull = true
+
+      const def = {
+        name: 'BadClass',
+        properties: 'not-an-array' as unknown as string[],
+      }
+
+      await expect(api.createClass(def)).rejects.toThrow('must be an array')
     })
   })
 

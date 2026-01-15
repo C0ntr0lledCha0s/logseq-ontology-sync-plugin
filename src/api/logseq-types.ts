@@ -11,11 +11,24 @@
  * @see https://plugins-doc.logseq.com/
  */
 
+import type { ILSPluginUser } from '@logseq/libs/dist/LSPlugin.user'
+
 // Re-export commonly used types from @logseq/libs for convenience
 export type {
   PageEntity as LogseqPage,
   BlockEntity as LogseqBlock,
 } from '@logseq/libs/dist/LSPlugin.user'
+
+/**
+ * Declare the global `logseq` object provided by @logseq/libs
+ *
+ * This enables TypeScript to understand the `logseq` global that is
+ * injected at runtime when the plugin is loaded in Logseq.
+ */
+declare global {
+  // eslint-disable-next-line no-var
+  var logseq: ILSPluginUser
+}
 
 /**
  * Type guard to check if we're running in a Logseq plugin context
