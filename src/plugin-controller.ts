@@ -20,6 +20,35 @@ import { getSettings } from './settings'
 import { logger } from './utils/logger'
 
 /**
+ * Detect if Logseq is in dark mode
+ */
+async function isDarkMode(): Promise<boolean> {
+  try {
+    const configs = await logseq.App.getUserConfigs()
+    // Theme can be 'light', 'dark', or a custom theme name
+    const theme = configs.preferredThemeMode
+    return theme === 'dark'
+  } catch {
+    // Default to light mode if detection fails
+    return false
+  }
+}
+
+/**
+ * Refresh the Logseq UI to show newly created pages
+ * Navigates to All Pages view to ensure new items are visible
+ */
+async function refreshLogseqUI(): Promise<void> {
+  try {
+    // Navigate to all-pages to show newly created pages/properties
+    await logseq.App.pushState('all-pages')
+    logger.debug('Navigated to all-pages to show new items')
+  } catch (error) {
+    logger.warn('Failed to refresh UI', error)
+  }
+}
+
+/**
  * Plugin Controller class
  *
  * Orchestrates the interaction between different plugin modules:
@@ -52,10 +81,12 @@ export class PluginController {
    * Initialize the UI
    */
   initializeUI(): void {
-    // Inject styles
-    logseq.provideStyle(getMainPanelStyles())
+    // Inject styles into plugin iframe
+    const style = document.createElement('style')
+    style.textContent = getMainPanelStyles()
+    document.head.appendChild(style)
 
-    // Set up the main UI container
+    // Set up the main UI container styles
     logseq.setMainUIInlineStyle({
       position: 'fixed',
       top: '0',
@@ -65,6 +96,11 @@ export class PluginController {
       zIndex: '999',
     })
 
+    // Create container for panel
+    const container = document.createElement('div')
+    container.id = 'ontology-panel-root'
+    document.body.appendChild(container)
+
     logger.info('UI initialized')
   }
 
@@ -72,13 +108,17 @@ export class PluginController {
    * Show the main panel
    */
   async showPanel(): Promise<void> {
+    // Apply theme before showing
+    const darkMode = await isDarkMode()
+    document.body.setAttribute('data-theme', darkMode ? 'dark' : 'light')
+
+    this.updatePanelUI()
+    logseq.showMainUI({ autoFocus: true })
+
     // Load templates if not already loaded
     if (!this.templates && !this.isLoading) {
       await this.loadMarketplace()
     }
-
-    this.updatePanelUI()
-    logseq.showMainUI()
   }
 
   /**
@@ -92,10 +132,51 @@ export class PluginController {
    * Update the panel UI with current state
    */
   private updatePanelUI(): void {
-    const html = getMainPanelHTML(this.templates, this.isLoading, this.error)
-    logseq.provideUI({
-      key: 'ontology-panel',
-      template: html,
+    const container = document.getElementById('ontology-panel-root')
+    if (container) {
+      container.innerHTML = getMainPanelHTML(this.templates, this.isLoading, this.error)
+      this.attachEventListeners(container)
+    }
+  }
+
+  /**
+   * Attach event listeners to panel elements
+   */
+  private attachEventListeners(container: HTMLElement): void {
+    // Close panel (backdrop and X button)
+    container.querySelectorAll('[data-action="close"]').forEach((el) => {
+      el.addEventListener('click', () => this.closePanel())
+    })
+
+    // Import from file
+    container.querySelector('[data-action="import-file"]')?.addEventListener('click', () => {
+      void this.importFromFile()
+    })
+
+    // Export template
+    container.querySelector('[data-action="export"]')?.addEventListener('click', () => {
+      void this.exportTemplate()
+    })
+
+    // Refresh marketplace
+    container.querySelector('[data-action="refresh"]')?.addEventListener('click', () => {
+      void this.refreshMarketplace()
+    })
+
+    // Open settings
+    container.querySelector('[data-action="settings"]')?.addEventListener('click', () => {
+      this.openSettings()
+    })
+
+    // Import template buttons
+    container.querySelectorAll('[data-action="import-template"]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const url = el.getAttribute('data-url')
+        const name = el.getAttribute('data-name')
+        if (url && name) {
+          void this.importTemplate(url, name)
+        }
+      })
     })
   }
 
@@ -177,6 +258,8 @@ export class PluginController {
           `Successfully imported ${result.applied.classes} classes and ${result.applied.properties} properties`,
           'success'
         )
+        // Refresh UI to show newly created items
+        await refreshLogseqUI()
       } else {
         const errorMsg = result.errors.map((e) => e.message).join(', ')
         await showMessage(`Import failed: ${errorMsg}`, 'error')
@@ -240,6 +323,8 @@ export class PluginController {
           `Successfully imported ${result.applied.classes} classes and ${result.applied.properties} properties`,
           'success'
         )
+        // Refresh UI to show newly created items
+        await refreshLogseqUI()
       } else {
         const errorMsg = result.errors.map((e) => e.message).join(', ')
         await showMessage(`Import failed: ${errorMsg}`, 'error')

@@ -192,6 +192,79 @@ export function getMainPanelStyles(): string {
       background: rgba(0, 0, 0, 0.3);
       z-index: 998;
     }
+
+    /* Dark mode overrides */
+    [data-theme="dark"] .ontology-panel {
+      background: #1e1e1e;
+      border-color: #3a3a3a;
+    }
+
+    [data-theme="dark"] .ontology-panel-header {
+      border-bottom-color: #3a3a3a;
+    }
+
+    [data-theme="dark"] .ontology-panel-title {
+      color: #e0e0e0;
+    }
+
+    [data-theme="dark"] .ontology-panel-close {
+      color: #888;
+    }
+
+    [data-theme="dark"] .ontology-panel-close:hover {
+      color: #e0e0e0;
+    }
+
+    [data-theme="dark"] .ontology-panel-section-title {
+      color: #888;
+    }
+
+    [data-theme="dark"] .ontology-action-btn {
+      background: #2a2a2a;
+      border-color: #3a3a3a;
+      color: #e0e0e0;
+    }
+
+    [data-theme="dark"] .ontology-action-btn:hover {
+      background: #333;
+      border-color: #5a9cf8;
+    }
+
+    [data-theme="dark"] .ontology-template-item {
+      background: #2a2a2a;
+      border-color: #3a3a3a;
+    }
+
+    [data-theme="dark"] .ontology-template-name {
+      color: #e0e0e0;
+    }
+
+    [data-theme="dark"] .ontology-template-meta {
+      color: #888;
+    }
+
+    [data-theme="dark"] .ontology-loading {
+      color: #888;
+    }
+
+    [data-theme="dark"] .ontology-error {
+      background: #3a1a1a;
+      border-color: #5a2a2a;
+      color: #ff6b6b;
+    }
+
+    [data-theme="dark"] .ontology-panel-footer {
+      border-top-color: #3a3a3a;
+      color: #888;
+    }
+
+    [data-theme="dark"] .ontology-panel-footer a {
+      color: #5a9cf8;
+    }
+
+    [data-theme="dark"] .ontology-backdrop {
+      background: rgba(0, 0, 0, 0.5);
+    }
   `
 }
 
@@ -211,7 +284,7 @@ export function renderTemplateList(templates: MarketplaceTemplate[]): string {
         <div class="ontology-template-name">${t.name}</div>
         <div class="ontology-template-meta">v${t.version} - ${t.category}</div>
       </div>
-      <button class="ontology-template-btn" data-on-click="importTemplate" data-url="${t.downloadUrl}" data-name="${t.name}">
+      <button class="ontology-template-btn" data-action="import-template" data-url="${t.downloadUrl}" data-name="${t.name}">
         Import
       </button>
     </div>
@@ -241,30 +314,30 @@ export function getMainPanelHTML(
   }
 
   return `
-    <div class="ontology-backdrop" data-on-click="closePanel"></div>
+    <div class="ontology-backdrop" data-action="close"></div>
     <div class="ontology-panel">
       <div class="ontology-panel-header">
         <h2 class="ontology-panel-title">Ontology Sync</h2>
-        <button class="ontology-panel-close" data-on-click="closePanel">&times;</button>
+        <button class="ontology-panel-close" data-action="close">&times;</button>
       </div>
 
       <div class="ontology-panel-content">
         <div class="ontology-panel-section">
           <h3 class="ontology-panel-section-title">Quick Actions</h3>
           <div class="ontology-actions">
-            <button class="ontology-action-btn" data-on-click="importFromFile">
+            <button class="ontology-action-btn" data-action="import-file">
               <span class="icon">📁</span>
               <span>Import File</span>
             </button>
-            <button class="ontology-action-btn" data-on-click="exportTemplate">
+            <button class="ontology-action-btn" data-action="export">
               <span class="icon">💾</span>
               <span>Export</span>
             </button>
-            <button class="ontology-action-btn" data-on-click="refreshMarketplace">
+            <button class="ontology-action-btn" data-action="refresh">
               <span class="icon">🔄</span>
               <span>Refresh</span>
             </button>
-            <button class="ontology-action-btn" data-on-click="openSettings">
+            <button class="ontology-action-btn" data-action="settings">
               <span class="icon">⚙️</span>
               <span>Settings</span>
             </button>
