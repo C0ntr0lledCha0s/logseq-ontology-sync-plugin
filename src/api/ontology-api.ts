@@ -112,6 +112,59 @@ export class OntologyAPIError extends Error {
     super(message)
     this.name = 'OntologyAPIError'
   }
+
+  /**
+   * Check if this error indicates the entity already exists or cannot be modified
+   * This includes both explicit duplicates and plugin ownership restrictions
+   */
+  isDuplicate(): boolean {
+    return (
+      this.code === 'DUPLICATE_PROPERTY' ||
+      this.code === 'DUPLICATE_CLASS' ||
+      this.code === 'PLUGIN_OWNERSHIP_RESTRICTED'
+    )
+  }
+}
+
+/**
+ * Check if an error is a Logseq plugin ownership restriction
+ * This occurs when a plugin tries to modify properties/classes it didn't create
+ */
+function isPluginOwnershipError(error: unknown): boolean {
+  if (!error) return false
+
+  const searchString = 'Plugins can only upsert its own properties'
+
+  // Check Error instance
+  if (error instanceof Error) {
+    return error.message.includes(searchString)
+  }
+
+  // Check string
+  if (typeof error === 'string') {
+    return error.includes(searchString)
+  }
+
+  // Check plain object with message property (common Logseq error format)
+  if (typeof error === 'object') {
+    const obj = error as Record<string, unknown>
+
+    // Direct message property check (most reliable for Logseq errors)
+    if (typeof obj.message === 'string' && obj.message.includes(searchString)) {
+      return true
+    }
+
+    // Fallback: try to stringify (may fail on circular refs)
+    try {
+      const jsonStr = JSON.stringify(error)
+      return jsonStr.includes(searchString)
+    } catch {
+      // Stringify failed, check nested properties manually
+      return false
+    }
+  }
+
+  return false
 }
 
 // ============================================================================
@@ -364,7 +417,34 @@ export class LogseqOntologyAPI {
       return entity
     } catch (error) {
       if (error instanceof OntologyAPIError) throw error
-      const message = error instanceof Error ? error.message : 'Unknown error'
+
+      // Handle non-Error objects (Logseq sometimes returns plain objects or strings)
+      let message: string
+      if (error instanceof Error) {
+        message = error.message
+      } else if (typeof error === 'string') {
+        message = error
+      } else if (error && typeof error === 'object') {
+        message = JSON.stringify(error)
+      } else {
+        message = 'Unknown error'
+      }
+
+      // Check for plugin ownership restriction (Logseq DB-mode security)
+      // This occurs when the property already exists but wasn't created by this plugin
+      if (isPluginOwnershipError(error)) {
+        logger.debug(
+          `Property "${def.name}" exists but is owned by another plugin or was created manually`,
+          { name: def.name }
+        )
+        throw new OntologyAPIError(
+          `Property exists but cannot be modified by this plugin: ${def.name}`,
+          'PLUGIN_OWNERSHIP_RESTRICTED',
+          { propertyName: def.name }
+        )
+      }
+
+      logger.error('createProperty failed with raw error:', error)
       throw new OntologyAPIError(
         `Failed to create property: ${message}`,
         'CREATE_PROPERTY_FAILED',
@@ -548,7 +628,9 @@ export class LogseqOntologyAPI {
       if (def.icon) pageProperties['icon'] = def.icon
       if (def.schemaVersion) pageProperties['schema-version'] = def.schemaVersion
       if (def.properties && def.properties.length > 0) {
-        pageProperties['class/properties'] = def.properties
+        // Normalize property names to lowercase to match Logseq's internal format
+        const normalizedProps = def.properties.map((p) => p.toLowerCase().replace(/\s+/g, '-'))
+        pageProperties['class/properties'] = normalizedProps
       }
 
       // Create the class page
@@ -579,7 +661,34 @@ export class LogseqOntologyAPI {
       return entity
     } catch (error) {
       if (error instanceof OntologyAPIError) throw error
-      const message = error instanceof Error ? error.message : 'Unknown error'
+
+      // Handle non-Error objects (Logseq sometimes returns plain objects or strings)
+      let message: string
+      if (error instanceof Error) {
+        message = error.message
+      } else if (typeof error === 'string') {
+        message = error
+      } else if (error && typeof error === 'object') {
+        message = JSON.stringify(error)
+      } else {
+        message = 'Unknown error'
+      }
+
+      // Check for plugin ownership restriction (Logseq DB-mode security)
+      // This can occur when setting class/properties that reference non-owned properties
+      if (isPluginOwnershipError(error)) {
+        logger.debug(
+          `Class "${def.name}" could not be fully created due to ownership restrictions`,
+          { name: def.name }
+        )
+        throw new OntologyAPIError(
+          `Class creation restricted by plugin ownership: ${def.name}`,
+          'PLUGIN_OWNERSHIP_RESTRICTED',
+          { className: def.name }
+        )
+      }
+
+      logger.error('createClass failed with raw error:', error)
       throw new OntologyAPIError(`Failed to create class: ${message}`, 'CREATE_CLASS_FAILED', {
         className: def.name,
         originalError: message,
@@ -656,8 +765,10 @@ export class LogseqOntologyAPI {
         )
       }
       if (updates.properties !== undefined) {
+        // Normalize property names to lowercase to match Logseq's internal format
+        const normalizedProps = updates.properties.map((p) => p.toLowerCase().replace(/\s+/g, '-'))
         updatePromises.push(
-          api.Editor.upsertBlockProperty(targetBlock.uuid, 'class/properties', updates.properties)
+          api.Editor.upsertBlockProperty(targetBlock.uuid, 'class/properties', normalizedProps)
         )
       }
       if (updates.icon !== undefined) {
@@ -949,7 +1060,7 @@ export class LogseqOntologyAPI {
       throw new OntologyAPIError('No batch in progress', 'NO_BATCH')
     }
 
-    logger.info('Batch cancelled', { id: this.pendingBatch.id })
+    logger.info(`Batch cancelled: ${this.pendingBatch.id}`)
     this.pendingBatch = null
   }
 

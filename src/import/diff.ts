@@ -108,7 +108,19 @@ function detectConflict(
 }
 
 /**
+ * Normalize a name for case-insensitive lookup
+ * Logseq normalizes property/class names to lowercase with hyphens for spaces
+ */
+function normalizeForLookup(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, '-')
+}
+
+/**
  * Generate a diff between a parsed template and existing ontology
+ *
+ * @remarks
+ * Property and class names are compared case-insensitively because
+ * Logseq normalizes all names to lowercase internally.
  */
 export function diffTemplate(template: ParsedTemplate, existing: ExistingOntology): ImportPreview {
   const newClasses: ClassDefinition[] = []
@@ -117,9 +129,21 @@ export function diffTemplate(template: ParsedTemplate, existing: ExistingOntolog
   const updatedProperties: PropertyUpdate[] = []
   const conflicts: Conflict[] = []
 
-  // Process classes
+  // Build case-insensitive lookup maps for existing entities
+  const existingClassesLower = new Map<string, ClassDefinition>()
+  for (const [name, cls] of existing.classes) {
+    existingClassesLower.set(normalizeForLookup(name), cls)
+  }
+
+  const existingPropsLower = new Map<string, PropertyDefinition>()
+  for (const [name, prop] of existing.properties) {
+    existingPropsLower.set(normalizeForLookup(name), prop)
+  }
+
+  // Process classes (case-insensitive comparison)
   for (const cls of template.classes) {
-    const existingClass = existing.classes.get(cls.name)
+    const normalizedName = normalizeForLookup(cls.name)
+    const existingClass = existingClassesLower.get(normalizedName)
 
     if (!existingClass) {
       newClasses.push(cls)
@@ -136,9 +160,10 @@ export function diffTemplate(template: ParsedTemplate, existing: ExistingOntolog
     }
   }
 
-  // Process properties
+  // Process properties (case-insensitive comparison)
   for (const prop of template.properties) {
-    const existingProp = existing.properties.get(prop.name)
+    const normalizedName = normalizeForLookup(prop.name)
+    const existingProp = existingPropsLower.get(normalizedName)
 
     if (!existingProp) {
       newProperties.push(prop)

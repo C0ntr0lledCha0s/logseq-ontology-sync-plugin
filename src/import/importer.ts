@@ -5,7 +5,7 @@
 
 import { parseEdn, validateEdnTemplate } from '../parser/edn-parser'
 import { logger } from '../utils/logger'
-import { LogseqOntologyAPI } from '../api/ontology-api'
+import { LogseqOntologyAPI, OntologyAPIError } from '../api/ontology-api'
 import type {
   PropertyDefinition as APIPropertyDefinition,
   ClassDefinition as APIClassDefinition,
@@ -126,34 +126,313 @@ function validateImportTemplate(template: ParsedTemplate): ImportValidationResul
 }
 
 /**
+ * Valid property types for type coercion
+ */
+const VALID_TYPES = ['default', 'number', 'date', 'datetime', 'checkbox', 'url', 'page', 'node']
+
+/**
+ * Represents the tagged structure from EDN namespace reader macros
+ * e.g., #:user.property{...} becomes { tag: ':user.property', val: {...} }
+ */
+interface TaggedValue {
+  tag: string
+  val: Record<string, unknown>
+}
+
+/**
+ * Check if a value is a tagged EDN structure (from namespace reader macros)
+ */
+function isTaggedValue(value: unknown): value is TaggedValue {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'tag' in value &&
+    'val' in value &&
+    typeof (value as TaggedValue).tag === 'string' &&
+    typeof (value as TaggedValue).val === 'object'
+  )
+}
+
+/**
+ * Get a value from an EDN object, checking both with and without colon prefix
+ * The edn-data library may or may not strip the colon depending on configuration
+ */
+function getEdnValue(obj: Record<string, unknown>, key: string): unknown {
+  return obj[key] ?? obj[`:${key}`]
+}
+
+/**
+ * Check if the EDN data is in Logseq's native database export format
+ * Native format has properties/classes as tagged objects, not arrays
+ */
+function isNativeLogseqFormat(data: Record<string, unknown>): boolean {
+  // Check for properties/classes in both key formats
+  const props = data['properties'] ?? data[':properties']
+  const classes = data['classes'] ?? data[':classes']
+
+  // Native format has tagged objects with user.property/user.class namespaces
+  const hasNativeProperties = isTaggedValue(props) && props.tag.includes('user.property')
+  const hasNativeClasses = isTaggedValue(classes) && classes.tag.includes('user.class')
+
+  return hasNativeProperties || hasNativeClasses
+}
+
+/**
+ * Extract the display name from a Logseq identifier
+ * e.g., 'user.class/Person-abc123' -> 'Person'
+ * e.g., 'Person-abc123' -> 'Person'
+ */
+function extractDisplayName(identifier: string): string {
+  // Remove namespace prefix if present (e.g., 'user.class/')
+  const parts = identifier.split('/')
+  const withoutNamespace = parts[parts.length - 1] ?? identifier
+
+  // Remove the unique ID suffix (e.g., '-abc123')
+  // The pattern is: Name-uniqueId where uniqueId is alphanumeric
+  const match = withoutNamespace.match(/^(.+?)-[A-Za-z0-9_-]+$/)
+  return match?.[1] ?? withoutNamespace
+}
+
+/**
+ * Extract description from nested build/properties structure
+ */
+function extractDescription(buildProps: unknown): string | undefined {
+  if (!buildProps || typeof buildProps !== 'object') return undefined
+
+  // Handle tagged value structure (e.g., #:logseq.property{...})
+  const props = isTaggedValue(buildProps) ? buildProps.val : (buildProps as Record<string, unknown>)
+
+  // Look for description in various formats
+  const desc =
+    props['logseq.property/description'] || props['description'] || props[':logseq.property/description']
+
+  return typeof desc === 'string' ? desc : undefined
+}
+
+/**
+ * Parse Logseq's native database export format for properties
+ */
+function parseNativeProperties(
+  propsData: TaggedValue
+): PropertyDefinition[] {
+  const properties: PropertyDefinition[] = []
+
+  for (const [_key, value] of Object.entries(propsData.val)) {
+    if (typeof value !== 'object' || value === null) continue
+
+    const prop = value as Record<string, unknown>
+
+    // Get property name from block/title
+    const name = prop['block/title']
+    if (typeof name !== 'string' || !name) continue
+
+    // Get cardinality - format is 'db.cardinality/one' or 'db.cardinality/many'
+    const cardinalityRaw = prop['db/cardinality']
+    const cardinality =
+      typeof cardinalityRaw === 'string' && cardinalityRaw.includes('many') ? 'many' : 'one'
+
+    // Get type - format is 'default', 'number', etc.
+    const typeRaw = prop['logseq.property/type']
+    const typeStr = typeof typeRaw === 'string' ? typeRaw : 'default'
+    const type = VALID_TYPES.includes(typeStr)
+      ? (typeStr as import('../types').PropertySchemaType)
+      : 'default'
+
+    // Get description from nested build/properties
+    const description = extractDescription(prop['build/properties'])
+
+    properties.push({
+      name,
+      type,
+      cardinality,
+      description,
+    })
+  }
+
+  return properties
+}
+
+/**
+ * Parse Logseq's native database export format for classes
+ */
+function parseNativeClasses(classesData: TaggedValue): ClassDefinition[] {
+  const classes: ClassDefinition[] = []
+
+  for (const [_key, value] of Object.entries(classesData.val)) {
+    if (typeof value !== 'object' || value === null) continue
+
+    const cls = value as Record<string, unknown>
+
+    // Get class name from block/title
+    const name = cls['block/title']
+    if (typeof name !== 'string' || !name) continue
+
+    // Get parent class from build/class-extends
+    let parent: string | undefined
+    const extendsRaw = cls['build/class-extends']
+    if (Array.isArray(extendsRaw) && extendsRaw.length > 0) {
+      // Take the first parent (Logseq supports only single inheritance conceptually)
+      const parentRef = extendsRaw[0]
+      if (typeof parentRef === 'string') {
+        parent = extractDisplayName(parentRef)
+      }
+    }
+
+    // Get associated properties from build/class-properties
+    let classProperties: string[] | undefined
+    const propsRaw = cls['build/class-properties']
+    if (Array.isArray(propsRaw) && propsRaw.length > 0) {
+      classProperties = propsRaw
+        .filter((p): p is string => typeof p === 'string')
+        .map((p) => extractDisplayName(p))
+    }
+
+    // Get description from nested build/properties
+    const description = extractDescription(cls['build/properties'])
+
+    classes.push({
+      name,
+      parent,
+      description,
+      properties: classProperties,
+    })
+  }
+
+  return classes
+}
+
+/**
+ * Convert Logseq's native database export format to ParsedTemplate
+ */
+function nativeEdnToParsedTemplate(data: Record<string, unknown>): ParsedTemplate {
+  const properties: PropertyDefinition[] = []
+  const classes: ClassDefinition[] = []
+
+  // Parse properties if present (check both key formats)
+  const propsData = data['properties'] ?? data[':properties']
+  if (isTaggedValue(propsData)) {
+    logger.debug('Parsing native properties', { valKeys: Object.keys(propsData.val).length })
+    properties.push(...parseNativeProperties(propsData))
+    logger.debug('Parsed native properties', { count: properties.length })
+  } else {
+    logger.debug('Properties not found or not tagged', {
+      hasProperties: propsData !== undefined,
+      isTagged: isTaggedValue(propsData)
+    })
+  }
+
+  // Parse classes if present (check both key formats)
+  const classesData = data['classes'] ?? data[':classes']
+  if (isTaggedValue(classesData)) {
+    logger.debug('Parsing native classes', { valKeys: Object.keys(classesData.val).length })
+    classes.push(...parseNativeClasses(classesData))
+    logger.debug('Parsed native classes', { count: classes.length })
+  } else {
+    logger.debug('Classes not found or not tagged', {
+      hasClasses: classesData !== undefined,
+      isTagged: isTaggedValue(classesData)
+    })
+  }
+
+  const result = {
+    classes,
+    properties,
+    metadata: {
+      name: data['name'] ? String(data['name']) : 'Logseq Export',
+      description: 'Imported from Logseq database export',
+    },
+  }
+
+  logger.info('Native template parsed', {
+    classCount: classes.length,
+    propertyCount: properties.length,
+  })
+
+  return result
+}
+
+/**
  * Convert parsed EDN to ParsedTemplate structure
+ * Automatically detects and handles both simplified template format and native Logseq format
  */
 function ednToParsedTemplate(data: Record<string, unknown>): ParsedTemplate {
+  // Debug: log the structure of the parsed EDN
+  const topLevelKeys = Object.keys(data)
+  logger.debug('Parsed EDN top-level keys', { keys: topLevelKeys })
+
+  // Check for properties/classes in various key formats
+  const propsKey = topLevelKeys.find(k => k === 'properties' || k === ':properties')
+  const classesKey = topLevelKeys.find(k => k === 'classes' || k === ':classes')
+  logger.debug('Found keys', { propsKey, classesKey })
+
+  if (propsKey) {
+    const propsVal = data[propsKey]
+    logger.debug('Properties value type', {
+      type: typeof propsVal,
+      isArray: Array.isArray(propsVal),
+      isTagged: isTaggedValue(propsVal),
+      sample: propsVal ? JSON.stringify(propsVal).slice(0, 200) : 'null'
+    })
+  }
+
+  // Check if this is native Logseq format and use appropriate parser
+  if (isNativeLogseqFormat(data)) {
+    logger.debug('Detected native Logseq format')
+    return nativeEdnToParsedTemplate(data)
+  }
+
+  logger.debug('Using simplified template format parser')
+
+  // Original simplified template format
   const classes: ClassDefinition[] = []
   const properties: PropertyDefinition[] = []
 
+  // Find the actual key (could be 'classes' or ':classes' depending on EDN parser config)
+  const classesData = data['classes'] ?? data[':classes']
+  const propertiesData = data['properties'] ?? data[':properties']
+
+  logger.debug('Extracting from keys', {
+    hasClasses: classesData !== undefined,
+    isClassesArray: Array.isArray(classesData),
+    hasProperties: propertiesData !== undefined,
+    isPropertiesArray: Array.isArray(propertiesData),
+  })
+
   // Extract classes
-  if (Array.isArray(data['classes'])) {
-    for (const cls of data['classes']) {
+  if (Array.isArray(classesData)) {
+    for (const cls of classesData) {
       if (typeof cls === 'object' && cls !== null) {
         const c = cls as Record<string, unknown>
+        const name = getEdnValue(c, 'name')
+        const namespace = getEdnValue(c, 'namespace')
+        const parent = getEdnValue(c, 'parent')
+        const description = getEdnValue(c, 'description')
+        const clsProperties = getEdnValue(c, 'properties')
+
         classes.push({
-          name: String(c['name'] || ''),
-          namespace: c['namespace'] ? String(c['namespace']) : undefined,
-          parent: c['parent'] ? String(c['parent']) : undefined,
-          description: c['description'] ? String(c['description']) : undefined,
-          properties: Array.isArray(c['properties']) ? c['properties'].map(String) : undefined,
+          name: String(name || ''),
+          namespace: namespace ? String(namespace) : undefined,
+          parent: parent ? String(parent) : undefined,
+          description: description ? String(description) : undefined,
+          properties: Array.isArray(clsProperties) ? clsProperties.map(String) : undefined,
         })
       }
     }
   }
 
   // Extract properties
-  if (Array.isArray(data['properties'])) {
-    for (const prop of data['properties']) {
+  if (Array.isArray(propertiesData)) {
+    for (const prop of propertiesData) {
       if (typeof prop === 'object' && prop !== null) {
         const p = prop as Record<string, unknown>
-        const typeStr = String(p['type'] || 'default')
+        const name = getEdnValue(p, 'name')
+        const namespace = getEdnValue(p, 'namespace')
+        const propType = getEdnValue(p, 'type')
+        const description = getEdnValue(p, 'description')
+        const cardinality = getEdnValue(p, 'cardinality')
+        const required = getEdnValue(p, 'required')
+
+        const typeStr = String(propType || 'default')
         // Validate and coerce type to PropertySchemaType
         const validTypes = [
           'default',
@@ -170,18 +449,18 @@ function ednToParsedTemplate(data: Record<string, unknown>): ParsedTemplate {
           : 'default'
 
         properties.push({
-          name: String(p['name'] || ''),
-          namespace: p['namespace'] ? String(p['namespace']) : undefined,
+          name: String(name || ''),
+          namespace: namespace ? String(namespace) : undefined,
           type,
-          description: p['description'] ? String(p['description']) : undefined,
-          cardinality: p['cardinality'] === 'many' ? 'many' : 'one',
-          required: Boolean(p['required']),
+          description: description ? String(description) : undefined,
+          cardinality: cardinality === 'many' ? 'many' : 'one',
+          required: Boolean(required),
         })
       }
     }
   }
 
-  return {
+  const result = {
     classes,
     properties,
     metadata: {
@@ -190,6 +469,14 @@ function ednToParsedTemplate(data: Record<string, unknown>): ParsedTemplate {
       description: data['description'] ? String(data['description']) : undefined,
     },
   }
+
+  logger.info('Parsed template result', {
+    classCount: result.classes.length,
+    propertyCount: result.properties.length,
+    metadata: result.metadata,
+  })
+
+  return result
 }
 
 /**
@@ -302,6 +589,13 @@ export class OntologyImporter {
   }
 
   /**
+   * Small delay helper to avoid overwhelming Logseq's API
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+  }
+
+  /**
    * Apply changes to Logseq graph
    * Uses the Logseq API to create/update properties and classes
    */
@@ -317,71 +611,177 @@ export class OntologyImporter {
 
     let classesApplied = 0
     let propertiesApplied = 0
+    let skipped = 0
+    const errors: Array<{ name: string; error: string }> = []
 
-    // Start a transaction for atomic operations
-    await this.api.beginTransaction()
+    // Track properties that were successfully created by this plugin
+    // Only these can be linked to classes (Logseq ownership restriction)
+    const createdProperties = new Set<string>()
 
-    try {
-      // Create new properties
-      for (const prop of preview.newProperties) {
+    // Helper to normalize property name for comparison
+    const normalizePropertyName = (name: string): string => name.toLowerCase().replace(/\s+/g, '-')
+
+    // Helper to check if error is a duplicate or ownership restricted (should be skipped, not treated as error)
+    const isDuplicateError = (error: unknown): boolean => {
+      if (error instanceof OntologyAPIError) {
+        // Use the isDuplicate() method which covers DUPLICATE_*, and PLUGIN_OWNERSHIP_RESTRICTED
+        return error.isDuplicate()
+      }
+      // Also check error message for common patterns
+      const message = error instanceof Error ? error.message : String(error)
+      return (
+        message.includes('already exists') ||
+        message.includes('Plugins can only upsert its own properties')
+      )
+    }
+
+    // Create new properties (with small delay between each to avoid rate limiting)
+    for (const prop of preview.newProperties) {
+      try {
         const apiProp: APIPropertyDefinition = {
           name: prop.name,
           type: (prop.type as APIPropertyDefinition['type']) || 'default',
           cardinality: prop.cardinality || 'one',
           description: prop.description,
         }
+        logger.debug('Creating property:', { name: prop.name, type: apiProp.type })
         await this.api.createProperty(apiProp)
         propertiesApplied++
+        // Track this property as successfully created (normalized name)
+        createdProperties.add(normalizePropertyName(prop.name))
+        // Small delay to allow Logseq to process
+        await this.delay(50)
+      } catch (error) {
+        if (isDuplicateError(error)) {
+          // Property exists or is owned by another source - skip it
+          const reason =
+            error instanceof OntologyAPIError && error.code === 'PLUGIN_OWNERSHIP_RESTRICTED'
+              ? 'owned by another source'
+              : 'already exists'
+          logger.debug(`Property ${reason}, skipping: ${prop.name}`)
+          skipped++
+        } else {
+          const message = error instanceof Error ? error.message : String(error)
+          logger.error(`Failed to create property: ${prop.name}`, error)
+          errors.push({ name: prop.name, error: message })
+        }
       }
+    }
 
-      // Update existing properties
-      for (const update of preview.updatedProperties) {
+    // Update existing properties
+    for (const update of preview.updatedProperties) {
+      try {
         await this.api.updateProperty(update.name, {
           type: update.after.type as APIPropertyDefinition['type'],
           cardinality: update.after.cardinality,
           description: update.after.description,
         })
         propertiesApplied++
+        await this.delay(50)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        logger.error(`Failed to update property: ${update.name}`, error)
+        errors.push({ name: update.name, error: message })
       }
+    }
 
-      // Create new classes
-      for (const cls of preview.newClasses) {
+    // Create new classes
+    for (const cls of preview.newClasses) {
+      try {
+        // Filter properties to only include those created by this plugin
+        // Logseq won't allow linking to properties owned by other sources
+        let filteredProperties: string[] | undefined = undefined
+        if (cls.properties && cls.properties.length > 0) {
+          filteredProperties = cls.properties.filter((propName) =>
+            createdProperties.has(normalizePropertyName(propName))
+          )
+          if (filteredProperties.length < cls.properties.length) {
+            const skippedProps = cls.properties.length - filteredProperties.length
+            logger.debug(
+              `Class "${cls.name}": ${skippedProps} property reference(s) skipped (not owned by this plugin)`
+            )
+          }
+          // Don't pass empty array - use undefined instead
+          if (filteredProperties.length === 0) {
+            filteredProperties = undefined
+          }
+        }
+
         const apiClass: APIClassDefinition = {
           name: cls.name,
           parent: cls.parent,
           description: cls.description,
-          properties: cls.properties,
+          properties: filteredProperties,
         }
+        logger.debug('Creating class:', { name: cls.name, propertyCount: filteredProperties?.length ?? 0 })
         await this.api.createClass(apiClass)
         classesApplied++
+        await this.delay(50)
+      } catch (error) {
+        if (isDuplicateError(error)) {
+          logger.debug(`Class already exists, skipping: ${cls.name}`)
+          skipped++
+        } else {
+          const message = error instanceof Error ? error.message : String(error)
+          logger.error(`Failed to create class: ${cls.name}`, error)
+          errors.push({ name: cls.name, error: message })
+        }
       }
+    }
 
-      // Update existing classes
-      for (const update of preview.updatedClasses) {
+    // Update existing classes
+    for (const update of preview.updatedClasses) {
+      try {
+        // Filter properties to only include those created by this plugin
+        let filteredProperties: string[] | undefined = undefined
+        if (update.after.properties && update.after.properties.length > 0) {
+          filteredProperties = update.after.properties.filter((propName) =>
+            createdProperties.has(normalizePropertyName(propName))
+          )
+          if (filteredProperties.length === 0) {
+            filteredProperties = undefined
+          }
+        }
+
         await this.api.updateClass(update.name, {
           parent: update.after.parent,
           description: update.after.description,
-          properties: update.after.properties,
+          properties: filteredProperties,
         })
         classesApplied++
+        await this.delay(50)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        logger.error(`Failed to update class: ${update.name}`, error)
+        errors.push({ name: update.name, error: message })
       }
+    }
 
-      // Commit the transaction
-      await this.api.commitTransaction()
+    // Log any errors that occurred
+    if (errors.length > 0) {
+      logger.warn('Some operations failed during import', { errors })
+    }
 
-      logger.info('Changes applied successfully', {
-        classes: classesApplied,
-        properties: propertiesApplied,
-      })
+    if (skipped > 0) {
+      logger.info(`Skipped ${skipped} item(s) that already exist`)
+    }
 
-      return {
-        classes: classesApplied,
-        properties: propertiesApplied,
-      }
-    } catch (error) {
-      // Rollback on error
-      await this.api.rollbackTransaction()
-      throw error
+    logger.info('Changes applied', {
+      classes: classesApplied,
+      properties: propertiesApplied,
+      skipped,
+      errorCount: errors.length,
+    })
+
+    // If all operations failed (excluding skipped items), throw an error
+    // But if items were skipped, that's fine - they already exist
+    if (propertiesApplied === 0 && classesApplied === 0 && skipped === 0 && errors.length > 0) {
+      throw new Error(`All import operations failed: ${errors[0]?.error || 'Unknown error'}`)
+    }
+
+    return {
+      classes: classesApplied,
+      properties: propertiesApplied,
     }
   }
 
