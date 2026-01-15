@@ -1,6 +1,7 @@
 import '@logseq/libs'
 import { logger } from './utils/logger'
 import { PluginController } from './plugin-controller'
+import { settingsSchema } from './settings'
 
 const pluginId = 'logseq-ontology-sync'
 
@@ -29,36 +30,51 @@ function main(): void {
 
   logger.info(`[${pluginId}] Plugin loaded`)
 
+  // Register settings schema
+  logseq.useSettingsSchema(settingsSchema)
+
   // Initialize the plugin controller
   const controller = new PluginController()
+  controller.initializeUI()
 
-  // Provide model first (must be before registerUIItem)
+  // Provide model for UI event handlers
   logseq.provideModel({
-    showOntologyMenu: () => {
-      void controller.handleMenu()
+    // Panel controls
+    showPanel: () => void controller.showPanel(),
+    closePanel: () => controller.closePanel(),
+
+    // Actions
+    importFromFile: () => void controller.importFromFile(),
+    exportTemplate: () => void controller.exportTemplate(),
+    refreshMarketplace: () => void controller.refreshMarketplace(),
+    openSettings: () => controller.openSettings(),
+
+    // Template import
+    importTemplate: (e: { dataset: { url: string; name: string } }) => {
+      void controller.importTemplate(e.dataset.url, e.dataset.name)
     },
   })
 
-  // Register UI icon in toolbar - opens main menu
+  // Register UI icon in toolbar - opens main panel
   logseq.App.registerUIItem('toolbar', {
     key: pluginId,
-    template: `<a class="button" data-on-click="showOntologyMenu" title="Ontology Sync"><i class="ti ti-building-arch"></i></a>`,
+    template: `<a class="button" data-on-click="showPanel" title="Ontology Sync"><i class="ti ti-building-arch"></i></a>`,
   })
 
-  // Register UI commands - connected to controller
+  // Register command palette commands
   logseq.App.registerCommandPalette(
-    { key: 'menu', label: 'Ontology: Open Menu' },
-    () => void controller.handleMenu()
+    { key: 'open-panel', label: 'Ontology: Open Panel' },
+    () => void controller.showPanel()
   )
 
   logseq.App.registerCommandPalette(
-    { key: 'import', label: 'Ontology: Import from File' },
-    () => void controller.handleImport()
+    { key: 'import-file', label: 'Ontology: Import from File' },
+    () => void controller.importFromFile()
   )
 
   logseq.App.registerCommandPalette(
     { key: 'export', label: 'Ontology: Export Template' },
-    () => void controller.handleExport()
+    () => void controller.exportTemplate()
   )
 
   logseq.App.registerCommandPalette(
@@ -66,9 +82,8 @@ function main(): void {
     () => void controller.handleSync()
   )
 
-  logseq.App.registerCommandPalette(
-    { key: 'sources', label: 'Ontology: Manage Sources' },
-    () => void controller.handleManageSources()
+  logseq.App.registerCommandPalette({ key: 'settings', label: 'Ontology: Open Settings' }, () =>
+    controller.openSettings()
   )
 
   // Clean up on plugin unload
