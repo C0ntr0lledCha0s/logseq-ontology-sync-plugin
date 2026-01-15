@@ -13,14 +13,14 @@ function isAlreadyInitialized(): boolean {
 }
 
 function markInitialized(): void {
-  (window as unknown as Record<string, boolean>)[INIT_KEY] = true
+  ;(window as unknown as Record<string, boolean>)[INIT_KEY] = true
 }
 
 function clearInitialized(): void {
   delete (window as unknown as Record<string, boolean>)[INIT_KEY]
 }
 
-async function main(): Promise<void> {
+function main(): void {
   if (isAlreadyInitialized()) {
     logger.debug(`[${pluginId}] Plugin already initialized, skipping registration`)
     return
@@ -47,8 +47,13 @@ async function main(): Promise<void> {
 
   // Register UI commands - connected to controller
   logseq.App.registerCommandPalette(
-    { key: 'import', label: 'Ontology: Import Template' },
+    { key: 'import', label: 'Ontology: Import Template (File)' },
     () => void controller.handleImport()
+  )
+
+  logseq.App.registerCommandPalette(
+    { key: 'import-from-source', label: 'Ontology: Import from URL or File' },
+    () => void controller.handleImportFromSource()
   )
 
   logseq.App.registerCommandPalette(
@@ -70,6 +75,7 @@ async function main(): Promise<void> {
   logseq.beforeunload(async () => {
     logger.info(`[${pluginId}] Plugin unloading`)
     clearInitialized()
+    await Promise.resolve()
   })
 
   logger.info(`[${pluginId}] Plugin ready`)

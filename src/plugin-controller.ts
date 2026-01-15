@@ -7,9 +7,16 @@
 
 import { OntologyImporter } from './import'
 import { SyncEngine } from './sync'
-import { SourceRegistry } from './sources'
+import { SourceRegistry, SourceFetcher } from './sources'
 import { LogseqOntologyAPI } from './api'
-import { pickFile, showMessage, showConfirm } from './ui/components'
+import {
+  pickFile,
+  showMessage,
+  showConfirm,
+  promptImportSourceType,
+  promptForUrl,
+  isValidUrl,
+} from './ui/components'
 import { logger } from './utils/logger'
 
 /**
@@ -25,6 +32,7 @@ export class PluginController {
   private importer: OntologyImporter
   private syncEngine: SyncEngine
   private sourceRegistry: SourceRegistry
+  private sourceFetcher: SourceFetcher
   private api: LogseqOntologyAPI
 
   constructor() {
@@ -32,6 +40,7 @@ export class PluginController {
     this.importer = new OntologyImporter()
     this.syncEngine = new SyncEngine()
     this.sourceRegistry = new SourceRegistry()
+    this.sourceFetcher = new SourceFetcher()
 
     logger.info('PluginController initialized')
   }
@@ -95,6 +104,106 @@ export class PluginController {
       const message = error instanceof Error ? error.message : 'Unknown error'
       logger.error('Import failed', error)
       await showMessage(`Import failed: ${message}`, 'error')
+    }
+  }
+
+  /**
+   * Handle import from URL or file
+   * Prompts user to choose source type and imports accordingly
+   */
+  async handleImportFromSource(): Promise<void> {
+    try {
+      // Ask user for source type
+      const sourceType = promptImportSourceType()
+
+      if (sourceType === 'url') {
+        await this.importFromUrl()
+      } else {
+        // sourceType === 'file'
+        await this.handleImport()
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      logger.error('Import from source failed', error)
+      await showMessage(`Import failed: ${message}`, 'error')
+    }
+  }
+
+  /**
+   * Import ontology from a URL
+   */
+  private async importFromUrl(): Promise<void> {
+    // Prompt for URL
+    const url = promptForUrl(
+      'Enter the URL to the .edn file:\n\n' +
+        'Supported formats:\n' +
+        '• Direct link to .edn file\n' +
+        '• GitHub raw file URL\n' +
+        '• GitHub release asset URL'
+    )
+
+    if (!url) {
+      logger.debug('Import from URL cancelled - no URL entered')
+      return
+    }
+
+    // Validate URL
+    if (!isValidUrl(url)) {
+      await showMessage('Invalid URL. Please enter a valid HTTP or HTTPS URL.', 'error')
+      return
+    }
+
+    logger.info('Importing from URL', { url })
+    await showMessage('Fetching template from URL...', 'info')
+
+    // Fetch content from URL
+    const fetchResult = await this.sourceFetcher.fetchUrl(url)
+
+    if (!fetchResult || fetchResult.trim().length === 0) {
+      await showMessage('The URL returned empty content', 'error')
+      return
+    }
+
+    logger.info('URL fetched successfully', { url, size: fetchResult.length })
+
+    // Generate preview
+    await showMessage('Parsing template...', 'info')
+    const preview = await this.importer.preview(fetchResult)
+
+    // Build summary message
+    const summary = this.buildImportSummary(preview)
+
+    // Check for conflicts
+    if (preview.conflicts.length > 0) {
+      const conflictMsg = `\n\nWarning: ${preview.conflicts.length} conflict(s) detected.`
+      const confirmed = showConfirm(summary + conflictMsg + '\n\nProceed with import?')
+      if (!confirmed) {
+        await showMessage('Import cancelled', 'info')
+        return
+      }
+    } else if (preview.summary.totalNew > 0 || preview.summary.totalUpdated > 0) {
+      const confirmed = showConfirm(summary + '\n\nProceed with import?')
+      if (!confirmed) {
+        await showMessage('Import cancelled', 'info')
+        return
+      }
+    } else {
+      await showMessage('No changes to import - ontology is already up to date', 'info')
+      return
+    }
+
+    // Execute import
+    await showMessage('Importing...', 'info')
+    const result = await this.importer.import(fetchResult)
+
+    if (result.success) {
+      await showMessage(
+        `Successfully imported ${result.applied.classes} classes and ${result.applied.properties} properties from URL`,
+        'success'
+      )
+    } else {
+      const errorMsg = result.errors.map((e) => e.message).join(', ')
+      await showMessage(`Import failed: ${errorMsg}`, 'error')
     }
   }
 
