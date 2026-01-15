@@ -9,9 +9,7 @@ const logseqDevPlugin =
     : (logseqDevPluginModule as { default: typeof logseqDevPluginModule }).default
 
 export default defineConfig({
-  plugins: [
-    logseqDevPlugin(),
-  ],
+  plugins: [logseqDevPlugin()],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

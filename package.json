@@ -9,12 +9,12 @@
   "logseq": {
     "id": "logseq-ontology-sync",
     "title": "Ontology Sync",
-    "icon": "./icon.svg",
-    "main": "index.html"
+    "icon": "./icon.svg"
   },
   "scripts": {
     "dev": "bun run vite",
-    "build": "bun run typecheck && bun run vite build && cp package.json icon.svg dist/",
+    "build": "bun run typecheck && bun run vite build && bun run build:package",
+    "build:package": "bun -e \"const p=await Bun.file('package.json').json(); delete p.type; delete p.scripts; delete p.devDependencies; delete p.trustedDependencies; delete p.engines; await Bun.write('dist/package.json', JSON.stringify(p, null, 2))\" && cp icon.svg dist/",
     "preview": "bun run vite preview",
     "test": "bun test",
     "test:watch": "bun test --watch",
@@ -23,7 +23,8 @@
     "lint:fix": "bun run eslint src --ext .ts,.tsx --fix",
     "format": "bun run prettier --write \"src/**/*.{ts,tsx,json,css,md}\"",
     "format:check": "bun run prettier --check \"src/**/*.{ts,tsx,json,css,md}\"",
-    "typecheck": "bun run tsc --noEmit"
+    "typecheck": "bun run tsc --noEmit",
+    "deploy": "bun run build && mkdir -p /mnt/c/logseq-plugins/logseq-ontology-sync && cp -r dist/* /mnt/c/logseq-plugins/logseq-ontology-sync/"
   },
   "trustedDependencies": ["@logseq/libs"],
   "dependencies": {
