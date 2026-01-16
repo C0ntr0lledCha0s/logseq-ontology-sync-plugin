@@ -41,6 +41,10 @@ export interface PropertyDefinition {
   cardinality: PropertyCardinality
   /** Whether property is hidden in UI */
   hide?: boolean
+  /** Icon for UI display (emoji-mart id or tabler-icon name) */
+  icon?: string
+  /** Icon type for setBlockIcon API ('emoji' or 'tabler-icon') */
+  iconType?: 'emoji' | 'tabler-icon'
   /** Schema version for migrations */
   schemaVersion?: number
   /** Classes this property applies to */
@@ -95,8 +99,10 @@ export interface ClassDefinition {
   parent?: string
   /** Properties that belong to this class */
   properties?: string[]
-  /** Icon for UI display */
+  /** Icon for UI display (emoji-mart id or tabler-icon name) */
   icon?: string
+  /** Icon type for setBlockIcon API ('emoji' or 'tabler-icon') */
+  iconType?: 'emoji' | 'tabler-icon'
   /** Schema version for migrations */
   schemaVersion?: number
 }

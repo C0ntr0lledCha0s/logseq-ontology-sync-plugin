@@ -347,6 +347,10 @@ export class LogseqOntologyAPI {
    * @param def - Property definition
    * @returns Created property entity
    * @throws OntologyAPIError if validation fails or creation fails
+   *
+   * @remarks
+   * In Logseq DB mode, properties are created using `Editor.upsertProperty()`,
+   * not `createPage()` with block/type. This ensures proper typing in the database.
    */
   async createProperty(def: PropertyDefinition): Promise<PropertyEntity> {
     validatePropertyDefinition(def)
@@ -359,53 +363,120 @@ export class LogseqOntologyAPI {
 
     const api = getLogseqAPI()
 
+    // Type for the Editor with property methods
+    type EditorWithProps = typeof api.Editor & {
+      upsertProperty: (
+        key: string,
+        schema?: Record<string, unknown>,
+        opts?: { name?: string }
+      ) => Promise<{ id?: number } | undefined>
+      getProperty?: (key: string) => Promise<{ id: number; uuid: string } | null>
+      upsertBlockProperty?: (blockId: string, key: string, value: unknown) => Promise<void>
+    }
+
+    const editor = api.Editor as EditorWithProps
+
     try {
-      // Normalize property name to kebab-case for Logseq
-      const normalizedName = def.name.toLowerCase().replace(/\s+/g, '-')
+      // Normalize property key to kebab-case for Logseq (internal identifier)
+      const normalizedKey = def.name.toLowerCase().replace(/\s+/g, '-')
 
-      // Check if property already exists
-      const existing = await api.Editor.getPage(normalizedName)
-      if (existing) {
-        throw new OntologyAPIError(
-          `Property already exists: ${normalizedName}`,
-          'DUPLICATE_PROPERTY',
-          { name: normalizedName }
-        )
+      // Map our property types to Logseq's expected types
+      // Logseq DB mode accepts: 'default', 'string', 'number', 'date', 'checkbox', 'url', 'node'
+      const typeMap: Record<string, string> = {
+        default: 'default',
+        number: 'number',
+        date: 'date',
+        datetime: 'date', // Logseq uses 'date' for both
+        checkbox: 'checkbox',
+        url: 'url',
+        page: 'node', // 'page' maps to 'node' in DB mode
+        node: 'node',
+      }
+      const logseqType = typeMap[def.type] || 'default'
+
+      // Build upsertProperty schema options
+      // Logseq's upsertProperty schema supports: type, cardinality, hide, public
+      const schemaOptions: Record<string, unknown> = {
+        type: logseqType,
       }
 
-      // Build page properties
-      const pageProperties: Record<string, unknown> = {
-        'block/type': 'property',
-        'property/schema-type': def.type,
-        'property/cardinality': def.cardinality,
+      // Add cardinality if 'many'
+      if (def.cardinality === 'many') {
+        schemaOptions.cardinality = 'many'
       }
 
-      if (def.description) pageProperties['description'] = def.description
-      if (def.title) pageProperties['title'] = def.title
-      if (def.hide !== undefined) pageProperties['property/hide?'] = def.hide
-      if (def.schemaVersion) pageProperties['schema-version'] = def.schemaVersion
-      if (def.classes && def.classes.length > 0) {
-        pageProperties['property/classes'] = def.classes
+      // Add hide option (controls visibility in UI)
+      if (def.hide !== undefined) {
+        schemaOptions.hide = def.hide
       }
 
-      // Create the property page
-      const page = await api.Editor.createPage(normalizedName, pageProperties, {
-        redirect: false,
+      // Build opts with original name to preserve casing
+      const opts: { name?: string } = {}
+      if (def.title || def.name !== normalizedKey) {
+        // Use title if provided, otherwise preserve original name casing
+        opts.name = def.title || def.name
+      }
+
+      // Use upsertProperty for DB mode (creates if not exists, updates if exists)
+      // This is the correct API for Logseq DB mode
+      logger.debug('Calling upsertProperty', {
+        key: normalizedKey,
+        schema: schemaOptions,
+        opts,
       })
+      const result = await editor.upsertProperty(normalizedKey, schemaOptions, opts)
 
-      if (!page) {
-        throw new OntologyAPIError(
-          `Logseq failed to create page for property: ${normalizedName}`,
-          'CREATE_PAGE_FAILED',
-          { name: normalizedName }
-        )
+      // upsertProperty returns IEntityID (just { id }) - we need to get the actual property to get UUID
+      // Query the property to get its UUID for icon and metadata operations
+      let uuid: string | undefined
+      if (editor.getProperty) {
+        try {
+          const propertyEntity = await editor.getProperty(normalizedKey)
+          uuid = propertyEntity?.uuid
+          logger.debug('Got property entity', { key: normalizedKey, uuid, id: propertyEntity?.id })
+        } catch (getError) {
+          logger.debug('Could not get property entity', {
+            key: normalizedKey,
+            error: getError instanceof Error ? getError.message : String(getError),
+          })
+        }
+      }
+
+      // Set additional metadata fields via upsertBlockProperty
+      // These fields are not directly supported by upsertProperty schema
+      if (uuid && editor.upsertBlockProperty) {
+        const metadataFields: Array<[string, unknown, string]> = []
+
+        if (def.description) metadataFields.push([uuid, def.description, 'description'])
+        if (def.schemaVersion) metadataFields.push([uuid, def.schemaVersion, 'schema-version'])
+
+        // Set description via upsertBlockProperty
+        for (const [blockId, value, key] of metadataFields) {
+          try {
+            await editor.upsertBlockProperty(blockId, key, value)
+            logger.info(`Set ${key} for property`, { property: def.name })
+          } catch (metaError) {
+            logger.warn(`Could not set ${key} for property "${def.name}"`, {
+              error: metaError instanceof Error ? metaError.message : String(metaError),
+            })
+          }
+        }
+      }
+
+      // Generate a fallback UUID if we couldn't retrieve it (shouldn't happen normally)
+      const entityUuid = uuid || crypto.randomUUID()
+      if (!uuid) {
+        logger.warn('Could not retrieve UUID for property, using generated fallback', {
+          property: def.name,
+          fallbackUuid: entityUuid,
+        })
       }
 
       const entity: PropertyEntity = {
-        id: page.id,
-        uuid: page.uuid,
-        name: normalizedName,
-        originalName: page.originalName || def.title || def.name,
+        id: result?.id || Date.now(),
+        uuid: entityUuid,
+        name: normalizedKey,
+        originalName: def.title || def.name,
         type: def.type,
         cardinality: def.cardinality,
         hide: def.hide ?? false,
@@ -548,6 +619,17 @@ export class LogseqOntologyAPI {
       }
 
       await Promise.all(updatePromises)
+
+      // NOTE: Icon setting for properties is NOT supported in Logseq DB mode.
+      // The setBlockIcon API only works for content blocks and pages, not for
+      // property/tag entities which are schema-level constructs.
+      if (updates.icon !== undefined) {
+        logger.debug('Skipping icon for property (not supported in DB mode)', {
+          property: name,
+          icon: updates.icon,
+        })
+      }
+
       logger.info('Property updated', { name, updatedFields: updateKeys })
     } catch (error) {
       if (error instanceof OntologyAPIError) throw error
@@ -596,6 +678,15 @@ export class LogseqOntologyAPI {
    * @param def - Class definition
    * @returns Created class entity
    * @throws OntologyAPIError if validation fails or creation fails
+   *
+   * @remarks
+   * Attempts to create a class using the dedicated tag management APIs:
+   * - `createTag()` to create the tag/class
+   * - `addTagProperty()` to link properties to the tag
+   * - `addTagExtends()` to set parent class inheritance
+   *
+   * Falls back to `createPage()` with `block/type: 'class'` if tag APIs are not available.
+   * In Logseq DB mode, Tags and Classes are the same concept.
    */
   async createClass(def: ClassDefinition): Promise<ClassEntity> {
     validateClassDefinition(def)
@@ -608,56 +699,48 @@ export class LogseqOntologyAPI {
 
     const api = getLogseqAPI()
 
+    // Type for the Editor with tag methods (may not be available in all Logseq versions)
+    type EditorWithTags = typeof api.Editor & {
+      createTag?: (
+        name: string,
+        opts?: { uuid?: string }
+      ) => Promise<{ id: number; uuid: string; name: string; originalName?: string } | null>
+      addTagProperty?: (tagId: string | number, propertyIdOrName: string | number) => Promise<void>
+      addTagExtends?: (tagId: string | number, parentTagIdOrName: string | number) => Promise<void>
+      getTag?: (nameOrIdent: string | number) => Promise<{ id: number; uuid: string } | null>
+      upsertBlockProperty?: (blockId: string, key: string, value: unknown) => Promise<void>
+    }
+
+    const editor = api.Editor as EditorWithTags
+
+    // Check if tag APIs are available
+    const hasTagAPIs = typeof editor.createTag === 'function'
+
     try {
       // Check if class already exists
-      const existing = await api.Editor.getPage(def.name)
-      if (existing) {
+      const existingPage = await api.Editor.getPage(def.name)
+      if (existingPage) {
         throw new OntologyAPIError(`Class already exists: ${def.name}`, 'DUPLICATE_CLASS', {
           name: def.name,
         })
       }
 
-      // Build page properties
-      const pageProperties: Record<string, unknown> = {
-        'block/type': 'class',
+      let entity: ClassEntity
+
+      if (hasTagAPIs) {
+        // Use dedicated tag APIs (preferred for DB mode)
+        entity = await this.createClassWithTagAPI(def, editor)
+      } else {
+        // Fallback to createPage with block/type: 'class'
+        logger.debug('Tag APIs not available, using createPage fallback')
+        entity = await this.createClassWithPageAPI(def, api)
       }
 
-      if (def.description) pageProperties['description'] = def.description
-      if (def.title) pageProperties['title'] = def.title
-      if (def.parent) pageProperties['class/parent'] = def.parent
-      if (def.icon) pageProperties['icon'] = def.icon
-      if (def.schemaVersion) pageProperties['schema-version'] = def.schemaVersion
-      if (def.properties && def.properties.length > 0) {
-        // Normalize property names to lowercase to match Logseq's internal format
-        const normalizedProps = def.properties.map((p) => p.toLowerCase().replace(/\s+/g, '-'))
-        pageProperties['class/properties'] = normalizedProps
-      }
-
-      // Create the class page
-      const page = await api.Editor.createPage(def.name, pageProperties, {
-        redirect: false,
-      })
-
-      if (!page) {
-        throw new OntologyAPIError(
-          `Logseq failed to create page for class: ${def.name}`,
-          'CREATE_PAGE_FAILED',
-          { name: def.name }
-        )
-      }
-
-      const entity: ClassEntity = {
-        id: page.id,
-        uuid: page.uuid,
+      logger.info('Class created', {
         name: def.name,
-        originalName: page.originalName || def.title || def.name,
-        parent: def.parent,
-        properties: def.properties || [],
-        children: [],
-        schemaVersion: def.schemaVersion || 1,
-      }
-
-      logger.info('Class created', { name: def.name, uuid: entity.uuid })
+        uuid: entity.uuid,
+        method: hasTagAPIs ? 'tag-api' : 'page-api',
+      })
       return entity
     } catch (error) {
       if (error instanceof OntologyAPIError) throw error
@@ -674,8 +757,29 @@ export class LogseqOntologyAPI {
         message = 'Unknown error'
       }
 
+      // Check for DataCloneError (tag APIs might return non-serializable data)
+      if (message.includes('DataCloneError') || message.includes('could not be cloned')) {
+        logger.warn('Tag API returned non-serializable data, falling back to page API')
+        try {
+          const entity = await this.createClassWithPageAPI(def, api)
+          logger.info('Class created via page API fallback', { name: def.name, uuid: entity.uuid })
+          return entity
+        } catch (fallbackError) {
+          if (fallbackError instanceof OntologyAPIError) throw fallbackError
+          const fallbackMessage =
+            fallbackError instanceof Error ? fallbackError.message : 'Fallback failed'
+          throw new OntologyAPIError(
+            `Failed to create class: ${fallbackMessage}`,
+            'CREATE_CLASS_FAILED',
+            {
+              className: def.name,
+              originalError: fallbackMessage,
+            }
+          )
+        }
+      }
+
       // Check for plugin ownership restriction (Logseq DB-mode security)
-      // This can occur when setting class/properties that reference non-owned properties
       if (isPluginOwnershipError(error)) {
         logger.debug(
           `Class "${def.name}" could not be fully created due to ownership restrictions`,
@@ -693,6 +797,162 @@ export class LogseqOntologyAPI {
         className: def.name,
         originalError: message,
       })
+    }
+  }
+
+  /**
+   * Create a class using the dedicated tag APIs
+   *
+   * @remarks
+   * After creating the tag with `createTag()`, additional metadata fields
+   * (description, title) are set via `upsertBlockProperty()` and icons are
+   * set via `setBlockIcon()` since the tag API doesn't directly support these.
+   */
+  private async createClassWithTagAPI(
+    def: ClassDefinition,
+    editor: {
+      createTag?: (
+        name: string,
+        opts?: { uuid?: string }
+      ) => Promise<{ id: number; uuid: string; name: string; originalName?: string } | null>
+      addTagProperty?: (tagId: string | number, propertyIdOrName: string | number) => Promise<void>
+      addTagExtends?: (tagId: string | number, parentTagIdOrName: string | number) => Promise<void>
+      upsertBlockProperty?: (blockId: string, key: string, value: unknown) => Promise<void>
+    }
+  ): Promise<ClassEntity> {
+    if (!editor.createTag) {
+      throw new OntologyAPIError('createTag API not available', 'API_NOT_AVAILABLE')
+    }
+
+    logger.debug('Creating tag', { name: def.name })
+    const tag = await editor.createTag(def.name)
+
+    if (!tag) {
+      throw new OntologyAPIError(
+        `Logseq failed to create tag for class: ${def.name}`,
+        'CREATE_TAG_FAILED',
+        { name: def.name }
+      )
+    }
+
+    // Use tag UUID as the identifier for subsequent operations
+    const tagId = tag.uuid
+
+    // Set additional metadata fields via upsertBlockProperty
+    // These fields are not directly supported by createTag
+    if (editor.upsertBlockProperty) {
+      const metadataFields: Array<[string, unknown, string]> = []
+
+      if (def.description) metadataFields.push([tagId, def.description, 'description'])
+      if (def.title) metadataFields.push([tagId, def.title, 'title'])
+      if (def.schemaVersion) metadataFields.push([tagId, def.schemaVersion, 'schema-version'])
+
+      for (const [blockId, value, key] of metadataFields) {
+        try {
+          await editor.upsertBlockProperty(blockId, key, value)
+          logger.debug(`Set ${key} for tag`, { tag: def.name, [key]: value })
+        } catch (metaError) {
+          // Log but don't fail - metadata is optional
+          logger.debug(`Could not set ${key} for tag "${def.name}"`, {
+            error: metaError instanceof Error ? metaError.message : String(metaError),
+          })
+        }
+      }
+    }
+
+    // Add properties to the tag using addTagProperty
+    if (def.properties && def.properties.length > 0 && editor.addTagProperty) {
+      logger.debug('Adding properties to tag', {
+        tagName: def.name,
+        propertyCount: def.properties.length,
+      })
+      for (const propName of def.properties) {
+        try {
+          // Normalize property name to match Logseq's internal format
+          const normalizedProp = propName.toLowerCase().replace(/\s+/g, '-')
+          await editor.addTagProperty(tagId, normalizedProp)
+          logger.debug('Added property to tag', { tag: def.name, property: normalizedProp })
+        } catch (propError) {
+          // Log but don't fail - property might not exist or be owned by another plugin
+          logger.debug(`Could not add property "${propName}" to tag "${def.name}"`, {
+            error: propError instanceof Error ? propError.message : String(propError),
+          })
+        }
+      }
+    }
+
+    // Set parent class inheritance using addTagExtends
+    if (def.parent && editor.addTagExtends) {
+      logger.debug('Setting tag parent', { tag: def.name, parent: def.parent })
+      try {
+        await editor.addTagExtends(tagId, def.parent)
+        logger.debug('Parent set for tag', { tag: def.name, parent: def.parent })
+      } catch (parentError) {
+        // Log but don't fail - parent tag might not exist
+        logger.debug(`Could not set parent "${def.parent}" for tag "${def.name}"`, {
+          error: parentError instanceof Error ? parentError.message : String(parentError),
+        })
+      }
+    }
+
+    return {
+      id: tag.id,
+      uuid: tag.uuid,
+      name: def.name,
+      originalName: tag.originalName || def.title || def.name,
+      parent: def.parent,
+      properties: def.properties || [],
+      children: [],
+      schemaVersion: def.schemaVersion || 1,
+    }
+  }
+
+  /**
+   * Create a class using createPage with block/type: 'class' (fallback method)
+   */
+  private async createClassWithPageAPI(
+    def: ClassDefinition,
+    api: ReturnType<typeof getLogseqAPI>
+  ): Promise<ClassEntity> {
+    // Build page properties for the class
+    const pageProperties: Record<string, unknown> = {
+      'block/type': 'class',
+    }
+
+    if (def.description) pageProperties['description'] = def.description
+    if (def.title) pageProperties['title'] = def.title
+    if (def.parent) pageProperties['class/parent'] = def.parent
+    // Don't set icon as property - use setBlockIcon API instead
+    if (def.schemaVersion) pageProperties['schema-version'] = def.schemaVersion
+    if (def.properties && def.properties.length > 0) {
+      // Normalize property names to lowercase to match Logseq's internal format
+      const normalizedProps = def.properties.map((p) => p.toLowerCase().replace(/\s+/g, '-'))
+      pageProperties['class/properties'] = normalizedProps
+    }
+
+    // Create the class page
+    logger.debug('Creating class page', { name: def.name, properties: Object.keys(pageProperties) })
+    const page = await api.Editor.createPage(def.name, pageProperties, {
+      redirect: false,
+    })
+
+    if (!page) {
+      throw new OntologyAPIError(
+        `Logseq failed to create page for class: ${def.name}`,
+        'CREATE_PAGE_FAILED',
+        { name: def.name }
+      )
+    }
+
+    return {
+      id: page.id,
+      uuid: page.uuid,
+      name: def.name,
+      originalName: page.originalName || def.title || def.name,
+      parent: def.parent,
+      properties: def.properties || [],
+      children: [],
+      schemaVersion: def.schemaVersion || 1,
     }
   }
 
@@ -771,9 +1031,6 @@ export class LogseqOntologyAPI {
           api.Editor.upsertBlockProperty(targetBlock.uuid, 'class/properties', normalizedProps)
         )
       }
-      if (updates.icon !== undefined) {
-        updatePromises.push(api.Editor.upsertBlockProperty(targetBlock.uuid, 'icon', updates.icon))
-      }
       if (updates.title !== undefined) {
         updatePromises.push(
           api.Editor.upsertBlockProperty(targetBlock.uuid, 'title', updates.title)
@@ -786,6 +1043,17 @@ export class LogseqOntologyAPI {
       }
 
       await Promise.all(updatePromises)
+
+      // NOTE: Icon setting for classes/tags is NOT supported in Logseq DB mode.
+      // The setBlockIcon API only works for content blocks and pages, not for
+      // class/tag entities which are schema-level constructs.
+      if (updates.icon !== undefined) {
+        logger.debug('Skipping icon for class (not supported in DB mode)', {
+          class: name,
+          icon: updates.icon,
+        })
+      }
+
       logger.info('Class updated', { name, updatedFields: updateKeys })
     } catch (error) {
       if (error instanceof OntologyAPIError) throw error

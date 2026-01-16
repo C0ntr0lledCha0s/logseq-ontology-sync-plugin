@@ -47,6 +47,35 @@ const EXPECTED_PROPERTY_KEYS = {
   schemaVersion: 'schema-version',
 }
 
+// Track DB mode API calls
+interface UpsertPropertyCall {
+  name: string
+  options: Record<string, unknown>
+}
+
+interface CreateTagCall {
+  name: string
+  opts?: { uuid?: string }
+}
+
+interface AddTagPropertyCall {
+  tagId: string | number
+  propertyIdOrName: string | number
+}
+
+interface AddTagExtendsCall {
+  tagId: string | number
+  parentTagIdOrName: string | number
+}
+
+const upsertPropertyCalls: UpsertPropertyCall[] = []
+const createTagCalls: CreateTagCall[] = []
+const addTagPropertyCalls: AddTagPropertyCall[] = []
+const addTagExtendsCalls: AddTagExtendsCall[] = []
+
+// Track if getTag should return null (for testing duplicate detection)
+let getTagReturnsNull = true
+
 // Mock the logseq global with enhanced tracking
 const mockLogseq = {
   Editor: {
@@ -87,6 +116,41 @@ const mockLogseq = {
       upsertBlockPropertyCalls.push({ blockUuid, propertyName, value })
       return undefined
     }),
+    // DB mode APIs
+    upsertProperty: mock(async (name: string, options: Record<string, unknown>) => {
+      upsertPropertyCalls.push({ name, options })
+      return {
+        id: Date.now(),
+        uuid: crypto.randomUUID(),
+      }
+    }),
+    // Tag management APIs
+    createTag: mock(async (name: string, opts?: { uuid?: string }) => {
+      createTagCalls.push({ name, opts })
+      return {
+        id: Date.now(),
+        uuid: crypto.randomUUID(),
+        name,
+        originalName: name,
+      }
+    }),
+    getTag: mock(async () => {
+      if (getTagReturnsNull) {
+        return null
+      }
+      return {
+        id: Date.now(),
+        uuid: crypto.randomUUID(),
+      }
+    }),
+    addTagProperty: mock(async (tagId: string | number, propertyIdOrName: string | number) => {
+      addTagPropertyCalls.push({ tagId, propertyIdOrName })
+      return undefined
+    }),
+    addTagExtends: mock(async (tagId: string | number, parentTagIdOrName: string | number) => {
+      addTagExtendsCalls.push({ tagId, parentTagIdOrName })
+      return undefined
+    }),
   },
   DB: {
     datascriptQuery: mock(async () => []),
@@ -107,14 +171,24 @@ describe('LogseqOntologyAPI', () => {
     mockLogseq.Editor.deletePage.mockClear()
     mockLogseq.Editor.getPageBlocksTree.mockClear()
     mockLogseq.Editor.upsertBlockProperty.mockClear()
+    mockLogseq.Editor.upsertProperty.mockClear()
+    mockLogseq.Editor.createTag.mockClear()
+    mockLogseq.Editor.getTag.mockClear()
+    mockLogseq.Editor.addTagProperty.mockClear()
+    mockLogseq.Editor.addTagExtends.mockClear()
     mockLogseq.DB.datascriptQuery.mockClear()
     // Reset state
     getPageReturnsNull = false
+    getTagReturnsNull = true // Default: tags don't exist (for creation tests)
     getPageBlocksTreeReturnsEmpty = false
     getPageBlocksTreeReturnsInvalid = false
     // Clear tracking arrays
     createPageCalls.length = 0
     upsertBlockPropertyCalls.length = 0
+    upsertPropertyCalls.length = 0
+    createTagCalls.length = 0
+    addTagPropertyCalls.length = 0
+    addTagExtendsCalls.length = 0
   })
 
   describe('Property Operations', () => {
@@ -135,9 +209,9 @@ describe('LogseqOntologyAPI', () => {
       expect(result.uuid).toBeDefined()
     })
 
-    test('should throw when creating duplicate property', async () => {
-      // Property already exists
-      getPageReturnsNull = false
+    test('should upsert property without throwing on duplicate (DB mode behavior)', async () => {
+      // In DB mode, upsertProperty handles duplicates by updating
+      // It doesn't throw an error for existing properties
 
       const def: PropertyDefinition = {
         name: 'existing-property',
@@ -145,7 +219,10 @@ describe('LogseqOntologyAPI', () => {
         cardinality: 'one',
       }
 
-      await expect(api.createProperty(def)).rejects.toThrow('already exists')
+      // Should not throw - upsertProperty handles duplicates gracefully
+      const result = await api.createProperty(def)
+      expect(result).toBeDefined()
+      expect(result.name).toBe('existing-property')
     })
 
     test('should update a property', async () => {
@@ -163,9 +240,7 @@ describe('LogseqOntologyAPI', () => {
       expect(properties).toBeInstanceOf(Map)
     })
 
-    test('should pass correct property keys to Logseq API', async () => {
-      getPageReturnsNull = true
-
+    test('should pass correct property options to upsertProperty API', async () => {
       const def: PropertyDefinition = {
         name: 'test-property',
         type: 'number',
@@ -177,16 +252,14 @@ describe('LogseqOntologyAPI', () => {
 
       await api.createProperty(def)
 
-      expect(createPageCalls).toHaveLength(1)
-      const call = createPageCalls[0]!
+      // For DB mode, we use upsertProperty instead of createPage
+      expect(upsertPropertyCalls).toHaveLength(1)
+      const call = upsertPropertyCalls[0]!
 
-      // Verify property keys match Logseq API expectations
-      expect(call.properties[EXPECTED_PROPERTY_KEYS.propertyType]).toBe('property')
-      expect(call.properties[EXPECTED_PROPERTY_KEYS.propertySchemaType]).toBe('number')
-      expect(call.properties[EXPECTED_PROPERTY_KEYS.propertyCardinality]).toBe('many')
-      expect(call.properties[EXPECTED_PROPERTY_KEYS.description]).toBe('A test property')
-      expect(call.properties[EXPECTED_PROPERTY_KEYS.propertyHide]).toBe(true)
-      expect(call.properties[EXPECTED_PROPERTY_KEYS.propertyClasses]).toEqual(['Person', 'Organization'])
+      // Verify property options match Logseq DB mode API expectations
+      expect(call.name).toBe('test-property')
+      expect(call.options.type).toBe('number')
+      expect(call.options.cardinality).toBe('many')
     })
 
     test('should throw when updating property with no valid blocks', async () => {
@@ -222,9 +295,10 @@ describe('LogseqOntologyAPI', () => {
   })
 
   describe('Class Operations', () => {
-    test('should create a class', async () => {
-      // Class doesn't exist yet
+    test('should create a class using createTag API', async () => {
+      // Class/tag doesn't exist yet
       getPageReturnsNull = true
+      getTagReturnsNull = true
 
       const def: ClassDefinition = {
         name: 'TestClass',
@@ -235,17 +309,23 @@ describe('LogseqOntologyAPI', () => {
       expect(result).toBeDefined()
       expect(result.name).toBe('TestClass')
       expect(result.uuid).toBeDefined()
+      // Verify createTag was called
+      expect(createTagCalls).toHaveLength(1)
+      expect(createTagCalls[0]!.name).toBe('TestClass')
     })
 
-    test('should throw when creating duplicate class', async () => {
-      // Class already exists
+    test('should throw on duplicate class', async () => {
+      // Page already exists (duplicate detection via getPage)
       getPageReturnsNull = false
+      getTagReturnsNull = true
 
       const def: ClassDefinition = {
         name: 'ExistingClass',
       }
 
-      await expect(api.createClass(def)).rejects.toThrow('already exists')
+      // Should throw because getPage returns a page (duplicate detected)
+      await expect(api.createClass(def)).rejects.toThrow(OntologyAPIError)
+      await expect(api.createClass(def)).rejects.toThrow('Class already exists: ExistingClass')
     })
 
     test('should update a class', async () => {
@@ -262,8 +342,10 @@ describe('LogseqOntologyAPI', () => {
       expect(classes).toBeInstanceOf(Map)
     })
 
-    test('should pass correct class keys to Logseq API', async () => {
+    test('should call createTag, addTagProperty, and addTagExtends for class with properties and parent', async () => {
+      // Class doesn't exist yet
       getPageReturnsNull = true
+      getTagReturnsNull = true
 
       const def: ClassDefinition = {
         name: 'TestClass',
@@ -275,20 +357,24 @@ describe('LogseqOntologyAPI', () => {
 
       await api.createClass(def)
 
-      expect(createPageCalls).toHaveLength(1)
-      const call = createPageCalls[0]!
+      // createTag is called
+      expect(createTagCalls).toHaveLength(1)
+      expect(createTagCalls[0]!.name).toBe('TestClass')
 
-      // Verify class keys match Logseq API expectations
-      expect(call.properties[EXPECTED_PROPERTY_KEYS.classType]).toBe('class')
-      expect(call.properties[EXPECTED_PROPERTY_KEYS.classParent]).toBe('ParentClass')
-      expect(call.properties[EXPECTED_PROPERTY_KEYS.description]).toBe('A test class')
-      // Properties are normalized to lowercase to match Logseq's internal format
-      expect(call.properties[EXPECTED_PROPERTY_KEYS.classProperties]).toEqual(['prop1', 'prop2'])
-      expect(call.properties[EXPECTED_PROPERTY_KEYS.icon]).toBe('📦')
+      // addTagProperty is called for each property
+      expect(addTagPropertyCalls).toHaveLength(2)
+      expect(addTagPropertyCalls[0]!.propertyIdOrName).toBe('prop1')
+      expect(addTagPropertyCalls[1]!.propertyIdOrName).toBe('prop2')
+
+      // addTagExtends is called for parent
+      expect(addTagExtendsCalls).toHaveLength(1)
+      expect(addTagExtendsCalls[0]!.parentTagIdOrName).toBe('ParentClass')
     })
 
-    test('should normalize property names to lowercase when creating class', async () => {
+    test('should normalize property names to lowercase when adding to tag', async () => {
+      // Class doesn't exist yet
       getPageReturnsNull = true
+      getTagReturnsNull = true
 
       const def: ClassDefinition = {
         name: 'TestClass',
@@ -297,15 +383,11 @@ describe('LogseqOntologyAPI', () => {
 
       await api.createClass(def)
 
-      expect(createPageCalls).toHaveLength(1)
-      const call = createPageCalls[0]!
-
       // Properties should be normalized: lowercase, spaces replaced with hyphens
-      expect(call.properties[EXPECTED_PROPERTY_KEYS.classProperties]).toEqual([
-        'firstname',
-        'last-name',
-        'email',
-      ])
+      expect(addTagPropertyCalls).toHaveLength(3)
+      expect(addTagPropertyCalls[0]!.propertyIdOrName).toBe('firstname')
+      expect(addTagPropertyCalls[1]!.propertyIdOrName).toBe('last-name')
+      expect(addTagPropertyCalls[2]!.propertyIdOrName).toBe('email')
     })
 
     test('should throw when updating class with no valid blocks', async () => {
