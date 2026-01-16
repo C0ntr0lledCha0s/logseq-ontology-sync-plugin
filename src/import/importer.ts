@@ -194,27 +194,161 @@ function extractDisplayName(identifier: string): string {
 }
 
 /**
- * Extract description from nested build/properties structure
+ * Parse a Logseq icon object into the format needed for setBlockIcon
+ * Icons can be:
+ * - A string (simple case - emoji character or tabler icon name)
+ * - An object with :type and :id (Logseq native format from exports)
+ *
+ * Returns { iconType, iconId } where iconType is 'emoji' | 'tabler-icon'
+ *
+ * Per Logseq's setBlockIcon API:
+ * - iconType: 'emoji' or 'tabler-icon'
+ * - iconName: For 'emoji' type, use the NATIVE emoji character (e.g., "📗")
+ *             For 'tabler-icon' type, use the tabler icon name (e.g., "home")
+ *
+ * Note: Logseq does NOT accept emoji-mart IDs (like "green_book") - it needs
+ * the actual emoji character. The native emoji is found in :skins[0]:native
+ * in the Logseq export format.
+ *
+ * See: https://logseq.github.io/plugins/interfaces/IEditorProxy.html
  */
-function extractDescription(buildProps: unknown): string | undefined {
-  if (!buildProps || typeof buildProps !== 'object') return undefined
+function parseIconObject(
+  iconData: unknown
+): { iconType: 'emoji' | 'tabler-icon'; iconId: string } | undefined {
+  if (!iconData) return undefined
+
+  // Simple string case
+  if (typeof iconData === 'string') {
+    // Detect if it's an emoji character or icon name
+    const isNativeEmoji = /^[\p{Emoji}\u200d]+$/u.test(iconData) || iconData.length <= 2
+    if (isNativeEmoji) {
+      logger.debug('Received native emoji string', { emoji: iconData })
+      return { iconType: 'emoji', iconId: iconData }
+    }
+    // Looks like a tabler icon name
+    return { iconType: 'tabler-icon', iconId: iconData }
+  }
+
+  // Object case - Logseq native format
+  // Example: {:type :emoji, :id "green_book", :skins [{:native "📗"}]}
+  if (typeof iconData === 'object' && iconData !== null) {
+    const obj = iconData as Record<string, unknown>
+
+    // Get the type - could be :type, type, or inferred from :skins presence
+    const typeRaw = obj['type'] || obj[':type']
+    const skins = obj['skins'] || obj[':skins']
+    const hasSkinsArray = Array.isArray(skins)
+
+    // Determine icon type
+    const isEmojiType = typeRaw === ':emoji' || typeRaw === 'emoji' || hasSkinsArray
+    const isTablerType = typeRaw === ':tabler-icon' || typeRaw === 'tabler-icon'
+
+    if (isEmojiType) {
+      // Get the emoji-mart ID if available
+      const emojiMartId = obj['id'] || obj[':id']
+
+      // Logseq's setBlockIcon with 'emoji' type expects colon-wrapped shortcodes
+      // like ":clipboard:" not the emoji-mart ID "clipboard" or native "📋"
+      if (typeof emojiMartId === 'string' && emojiMartId.length > 0) {
+        // Wrap in colons if not already wrapped
+        const wrappedId = emojiMartId.startsWith(':') ? emojiMartId : `:${emojiMartId}:`
+        logger.debug('Parsed emoji icon with colon-wrapped shortcode', {
+          emojiMartId,
+          wrappedId,
+          hasSkins: hasSkinsArray,
+        })
+        return { iconType: 'emoji', iconId: wrappedId }
+      }
+
+      // Fallback: if no ID but we have native emoji in skins, try that
+      if (hasSkinsArray) {
+        const skinsArray = skins as Array<Record<string, unknown>>
+        if (skinsArray.length > 0) {
+          const firstSkin = skinsArray[0]
+          const native = firstSkin?.['native'] || firstSkin?.[':native']
+          if (typeof native === 'string' && native.length > 0) {
+            logger.debug('Parsed emoji icon from native character (fallback)', {
+              nativeEmoji: native,
+            })
+            return { iconType: 'emoji', iconId: native }
+          }
+        }
+      }
+    } else if (isTablerType) {
+      // For tabler-icon type, use the :id directly
+      const iconId = obj['id'] || obj[':id']
+      if (typeof iconId === 'string') {
+        logger.debug('Parsed tabler icon', { iconId })
+        return { iconType: 'tabler-icon', iconId }
+      }
+    } else {
+      // Unknown type - try to use ID as tabler icon if present
+      const iconId = obj['id'] || obj[':id']
+      if (typeof iconId === 'string') {
+        logger.debug('Parsed unknown icon type as tabler', { iconId, originalType: typeRaw })
+        return { iconType: 'tabler-icon', iconId }
+      }
+    }
+  }
+
+  return undefined
+}
+
+/**
+ * Extract additional metadata from build/properties structure
+ */
+function extractBuildProperties(buildProps: unknown): {
+  description?: string
+  title?: string
+  icon?: string
+  iconType?: 'emoji' | 'tabler-icon'
+  hide?: boolean
+} {
+  if (!buildProps || typeof buildProps !== 'object') return {}
 
   // Handle tagged value structure (e.g., #:logseq.property{...})
   const props = isTaggedValue(buildProps) ? buildProps.val : (buildProps as Record<string, unknown>)
 
-  // Look for description in various formats
-  const desc =
-    props['logseq.property/description'] || props['description'] || props[':logseq.property/description']
+  const result: {
+    description?: string
+    title?: string
+    icon?: string
+    iconType?: 'emoji' | 'tabler-icon'
+    hide?: boolean
+  } = {}
 
-  return typeof desc === 'string' ? desc : undefined
+  // Look for fields in various formats
+  const desc =
+    props['logseq.property/description'] ||
+    props['description'] ||
+    props[':logseq.property/description']
+  if (typeof desc === 'string') result.description = desc
+
+  const title = props['logseq.property/title'] || props['title'] || props[':logseq.property/title']
+  if (typeof title === 'string') result.title = title
+
+  // Parse icon - can be string or complex object
+  const iconRaw =
+    props['logseq.property/icon'] ||
+    props['icon'] ||
+    props[':icon'] ||
+    props[':logseq.property/icon']
+  const parsedIcon = parseIconObject(iconRaw)
+  if (parsedIcon) {
+    result.icon = parsedIcon.iconId
+    result.iconType = parsedIcon.iconType
+  }
+
+  const hide = props['logseq.property/hide?'] || props['hide?'] || props[':logseq.property/hide?']
+  if (typeof hide === 'boolean') result.hide = hide
+
+  return result
 }
 
 /**
  * Parse Logseq's native database export format for properties
  */
-function parseNativeProperties(
-  propsData: TaggedValue
-): PropertyDefinition[] {
+function parseNativeProperties(propsData: TaggedValue): PropertyDefinition[] {
   const properties: PropertyDefinition[] = []
 
   for (const [_key, value] of Object.entries(propsData.val)) {
@@ -222,30 +356,79 @@ function parseNativeProperties(
 
     const prop = value as Record<string, unknown>
 
-    // Get property name from block/title
-    const name = prop['block/title']
+    // Get property name from block/title (check both with and without colon prefix)
+    const name = getEdnValue(prop, 'block/title')
     if (typeof name !== 'string' || !name) continue
 
     // Get cardinality - format is 'db.cardinality/one' or 'db.cardinality/many'
-    const cardinalityRaw = prop['db/cardinality']
+    const cardinalityRaw = getEdnValue(prop, 'db/cardinality')
     const cardinality =
       typeof cardinalityRaw === 'string' && cardinalityRaw.includes('many') ? 'many' : 'one'
 
     // Get type - format is 'default', 'number', etc.
-    const typeRaw = prop['logseq.property/type']
+    const typeRaw = getEdnValue(prop, 'logseq.property/type')
     const typeStr = typeof typeRaw === 'string' ? typeRaw : 'default'
     const type = VALID_TYPES.includes(typeStr)
       ? (typeStr as import('../types').PropertySchemaType)
       : 'default'
 
-    // Get description from nested build/properties
-    const description = extractDescription(prop['build/properties'])
+    // Get additional metadata from nested build/properties (check both key variants)
+    const buildProps = getEdnValue(prop, 'build/properties')
+    const metadata = extractBuildProperties(buildProps)
+
+    // Get hide property directly if not in build/properties
+    let hide = metadata.hide
+    const hideRaw =
+      getEdnValue(prop, 'logseq.property/hide?') ?? getEdnValue(prop, 'property/hide?')
+    if (typeof hideRaw === 'boolean') hide = hideRaw
+
+    // Get closed values if present
+    let closed: boolean | undefined
+    let closedValues: import('../types').ClosedValue[] | undefined
+    const closedRaw =
+      getEdnValue(prop, 'logseq.property/closed-values') ??
+      getEdnValue(prop, 'build/closed-values') ??
+      getEdnValue(prop, 'property/closed-values')
+    if (Array.isArray(closedRaw) && closedRaw.length > 0) {
+      closed = true
+      closedValues = closedRaw.map((cv: unknown) => {
+        if (typeof cv === 'string') return { value: cv }
+        if (typeof cv === 'object' && cv !== null) {
+          const cvObj = cv as Record<string, unknown>
+          return {
+            value: String(cvObj['value'] || cvObj['block/title'] || ''),
+            icon: typeof cvObj['icon'] === 'string' ? cvObj['icon'] : undefined,
+            description:
+              typeof cvObj['description'] === 'string' ? cvObj['description'] : undefined,
+          }
+        }
+        return { value: String(cv) }
+      })
+    }
+
+    // Get icon directly from property if not in build/properties
+    let icon = metadata.icon
+    let iconType = metadata.iconType
+    const propIconRaw = getEdnValue(prop, 'icon') ?? getEdnValue(prop, 'logseq.property/icon')
+    if (propIconRaw) {
+      const parsedPropIcon = parseIconObject(propIconRaw)
+      if (parsedPropIcon) {
+        icon = parsedPropIcon.iconId
+        iconType = parsedPropIcon.iconType
+      }
+    }
 
     properties.push({
       name,
       type,
       cardinality,
-      description,
+      description: metadata.description,
+      title: metadata.title,
+      hide,
+      icon,
+      iconType,
+      closed,
+      closedValues,
     })
   }
 
@@ -263,16 +446,16 @@ function parseNativeClasses(classesData: TaggedValue): ClassDefinition[] {
 
     const cls = value as Record<string, unknown>
 
-    // Get class name from block/title
-    const name = cls['block/title']
+    // Get class name from block/title (check both with and without colon prefix)
+    const name = getEdnValue(cls, 'block/title')
     if (typeof name !== 'string' || !name) continue
 
     // Get parent class from build/class-extends
     let parent: string | undefined
-    const extendsRaw = cls['build/class-extends']
+    const extendsRaw = getEdnValue(cls, 'build/class-extends')
     if (Array.isArray(extendsRaw) && extendsRaw.length > 0) {
       // Take the first parent (Logseq supports only single inheritance conceptually)
-      const parentRef = extendsRaw[0]
+      const parentRef = extendsRaw[0] as unknown
       if (typeof parentRef === 'string') {
         parent = extractDisplayName(parentRef)
       }
@@ -280,20 +463,41 @@ function parseNativeClasses(classesData: TaggedValue): ClassDefinition[] {
 
     // Get associated properties from build/class-properties
     let classProperties: string[] | undefined
-    const propsRaw = cls['build/class-properties']
+    const propsRaw = getEdnValue(cls, 'build/class-properties')
     if (Array.isArray(propsRaw) && propsRaw.length > 0) {
       classProperties = propsRaw
         .filter((p): p is string => typeof p === 'string')
         .map((p) => extractDisplayName(p))
     }
 
-    // Get description from nested build/properties
-    const description = extractDescription(cls['build/properties'])
+    // Get additional metadata from nested build/properties
+    const buildProps = getEdnValue(cls, 'build/properties')
+    const metadata = extractBuildProperties(buildProps)
+
+    // Get icon directly from class if not in build/properties
+    let icon = metadata.icon
+    let iconType = metadata.iconType
+    const iconRaw = getEdnValue(cls, 'icon') ?? getEdnValue(cls, 'logseq.class/icon')
+    if (iconRaw) {
+      const parsedClassIcon = parseIconObject(iconRaw)
+      if (parsedClassIcon) {
+        icon = parsedClassIcon.iconId
+        iconType = parsedClassIcon.iconType
+      }
+    }
+
+    // Get title from class
+    let title = metadata.title
+    const titleRaw = getEdnValue(cls, 'title') ?? getEdnValue(cls, 'logseq.class/title')
+    if (typeof titleRaw === 'string') title = titleRaw
 
     classes.push({
       name,
       parent,
-      description,
+      description: metadata.description,
+      title,
+      icon,
+      iconType,
       properties: classProperties,
     })
   }
@@ -317,7 +521,7 @@ function nativeEdnToParsedTemplate(data: Record<string, unknown>): ParsedTemplat
   } else {
     logger.debug('Properties not found or not tagged', {
       hasProperties: propsData !== undefined,
-      isTagged: isTaggedValue(propsData)
+      isTagged: isTaggedValue(propsData),
     })
   }
 
@@ -330,7 +534,7 @@ function nativeEdnToParsedTemplate(data: Record<string, unknown>): ParsedTemplat
   } else {
     logger.debug('Classes not found or not tagged', {
       hasClasses: classesData !== undefined,
-      isTagged: isTaggedValue(classesData)
+      isTagged: isTaggedValue(classesData),
     })
   }
 
@@ -361,8 +565,8 @@ function ednToParsedTemplate(data: Record<string, unknown>): ParsedTemplate {
   logger.debug('Parsed EDN top-level keys', { keys: topLevelKeys })
 
   // Check for properties/classes in various key formats
-  const propsKey = topLevelKeys.find(k => k === 'properties' || k === ':properties')
-  const classesKey = topLevelKeys.find(k => k === 'classes' || k === ':classes')
+  const propsKey = topLevelKeys.find((k) => k === 'properties' || k === ':properties')
+  const classesKey = topLevelKeys.find((k) => k === 'classes' || k === ':classes')
   logger.debug('Found keys', { propsKey, classesKey })
 
   if (propsKey) {
@@ -371,7 +575,7 @@ function ednToParsedTemplate(data: Record<string, unknown>): ParsedTemplate {
       type: typeof propsVal,
       isArray: Array.isArray(propsVal),
       isTagged: isTaggedValue(propsVal),
-      sample: propsVal ? JSON.stringify(propsVal).slice(0, 200) : 'null'
+      sample: propsVal ? JSON.stringify(propsVal).slice(0, 200) : 'null',
     })
   }
 
@@ -408,12 +612,16 @@ function ednToParsedTemplate(data: Record<string, unknown>): ParsedTemplate {
         const parent = getEdnValue(c, 'parent')
         const description = getEdnValue(c, 'description')
         const clsProperties = getEdnValue(c, 'properties')
+        const title = getEdnValue(c, 'title')
+        const icon = getEdnValue(c, 'icon')
 
         classes.push({
           name: String(name || ''),
           namespace: namespace ? String(namespace) : undefined,
           parent: parent ? String(parent) : undefined,
           description: description ? String(description) : undefined,
+          title: title ? String(title) : undefined,
+          icon: icon ? String(icon) : undefined,
           properties: Array.isArray(clsProperties) ? clsProperties.map(String) : undefined,
         })
       }
@@ -431,6 +639,13 @@ function ednToParsedTemplate(data: Record<string, unknown>): ParsedTemplate {
         const description = getEdnValue(p, 'description')
         const cardinality = getEdnValue(p, 'cardinality')
         const required = getEdnValue(p, 'required')
+        const title = getEdnValue(p, 'title')
+        const hide = getEdnValue(p, 'hide')
+        const icon = getEdnValue(p, 'icon')
+        const closed = getEdnValue(p, 'closed')
+        const closedValuesRaw = getEdnValue(p, 'closed-values') || getEdnValue(p, 'closedValues')
+        const choicesRaw = getEdnValue(p, 'choices')
+        const defaultValue = getEdnValue(p, 'default') || getEdnValue(p, 'defaultValue')
 
         const typeStr = String(propType || 'default')
         // Validate and coerce type to PropertySchemaType
@@ -448,13 +663,45 @@ function ednToParsedTemplate(data: Record<string, unknown>): ParsedTemplate {
           ? (typeStr as import('../types').PropertySchemaType)
           : 'default'
 
+        // Parse closed values if present
+        let closedValues: import('../types').ClosedValue[] | undefined
+        if (Array.isArray(closedValuesRaw) && closedValuesRaw.length > 0) {
+          closedValues = closedValuesRaw.map((cv: unknown) => {
+            if (typeof cv === 'string') return { value: cv }
+            if (typeof cv === 'object' && cv !== null) {
+              const cvObj = cv as Record<string, unknown>
+              return {
+                value: String(getEdnValue(cvObj, 'value') || ''),
+                icon: getEdnValue(cvObj, 'icon') ? String(getEdnValue(cvObj, 'icon')) : undefined,
+                description: getEdnValue(cvObj, 'description')
+                  ? String(getEdnValue(cvObj, 'description'))
+                  : undefined,
+              }
+            }
+            return { value: String(cv) }
+          })
+        }
+
+        // Parse simple choices if present (alternative to closedValues)
+        let choices: string[] | undefined
+        if (Array.isArray(choicesRaw) && choicesRaw.length > 0) {
+          choices = choicesRaw.map((c: unknown) => String(c))
+        }
+
         properties.push({
           name: String(name || ''),
           namespace: namespace ? String(namespace) : undefined,
           type,
           description: description ? String(description) : undefined,
+          title: title ? String(title) : undefined,
           cardinality: cardinality === 'many' ? 'many' : 'one',
           required: Boolean(required),
+          hide: typeof hide === 'boolean' ? hide : undefined,
+          icon: icon ? String(icon) : undefined,
+          closed: typeof closed === 'boolean' ? closed : closedValues ? true : undefined,
+          closedValues,
+          choices,
+          defaultValue,
         })
       }
     }
@@ -643,8 +890,16 @@ export class OntologyImporter {
           type: (prop.type as APIPropertyDefinition['type']) || 'default',
           cardinality: prop.cardinality || 'one',
           description: prop.description,
+          title: prop.title,
+          hide: prop.hide,
+          icon: prop.icon,
+          iconType: prop.iconType,
         }
-        logger.debug('Creating property:', { name: prop.name, type: apiProp.type })
+        logger.debug('Creating property:', {
+          name: prop.name,
+          type: apiProp.type,
+          hide: apiProp.hide,
+        })
         await this.api.createProperty(apiProp)
         propertiesApplied++
         // Track this property as successfully created (normalized name)
@@ -675,6 +930,10 @@ export class OntologyImporter {
           type: update.after.type as APIPropertyDefinition['type'],
           cardinality: update.after.cardinality,
           description: update.after.description,
+          title: update.after.title,
+          hide: update.after.hide,
+          icon: update.after.icon,
+          iconType: update.after.iconType,
         })
         propertiesApplied++
         await this.delay(50)
@@ -711,9 +970,15 @@ export class OntologyImporter {
           name: cls.name,
           parent: cls.parent,
           description: cls.description,
+          title: cls.title,
+          icon: cls.icon,
+          iconType: cls.iconType,
           properties: filteredProperties,
         }
-        logger.debug('Creating class:', { name: cls.name, propertyCount: filteredProperties?.length ?? 0 })
+        logger.debug('Creating class:', {
+          name: cls.name,
+          propertyCount: filteredProperties?.length ?? 0,
+        })
         await this.api.createClass(apiClass)
         classesApplied++
         await this.delay(50)
@@ -746,6 +1011,9 @@ export class OntologyImporter {
         await this.api.updateClass(update.name, {
           parent: update.after.parent,
           description: update.after.description,
+          title: update.after.title,
+          icon: update.after.icon,
+          iconType: update.after.iconType,
           properties: filteredProperties,
         })
         classesApplied++
@@ -828,15 +1096,25 @@ export class OntologyImporter {
 
   /**
    * Import a template into Logseq
+   *
+   * @param content - EDN template content to import
+   * @param options - Optional import options
+   * @param precomputedPreview - Optional pre-computed preview to avoid duplicate parsing.
+   *                             If provided, the content parameter is still required for
+   *                             error handling but won't be re-parsed.
    */
-  async import(content: string, options?: ImportOptions): Promise<ImportResult> {
+  async import(
+    content: string,
+    options?: ImportOptions,
+    precomputedPreview?: ImportPreview
+  ): Promise<ImportResult> {
     const startTime = Date.now()
     const opts = { ...this.options, ...options }
     const errors: ImportError[] = []
 
     try {
-      // Generate preview first
-      const preview = await this.preview(content)
+      // Use precomputed preview if provided, otherwise generate it
+      const preview = precomputedPreview ?? (await this.preview(content))
 
       // Check for unresolved conflicts
       if (preview.conflicts.length > 0 && opts.conflictStrategy === 'ask') {

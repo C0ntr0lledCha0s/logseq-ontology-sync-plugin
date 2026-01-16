@@ -38,10 +38,10 @@ async function isDarkMode(): Promise<boolean> {
  * Refresh the Logseq UI to show newly created pages
  * Navigates to All Pages view to ensure new items are visible
  */
-async function refreshLogseqUI(): Promise<void> {
+function refreshLogseqUI(): void {
   try {
     // Navigate to all-pages to show newly created pages/properties
-    await logseq.App.pushState('all-pages')
+    logseq.App.pushState('all-pages')
     logger.debug('Navigated to all-pages to show new items')
   } catch (error) {
     logger.warn('Failed to refresh UI', error)
@@ -249,9 +249,9 @@ export class PluginController {
         return
       }
 
-      // Execute import
+      // Execute import - pass the precomputed preview to avoid duplicate parsing
       await showMessage('Importing...', 'info')
-      const result = await this.importer.import(content)
+      const result = await this.importer.import(content, undefined, preview)
 
       if (result.success) {
         await showMessage(
@@ -259,7 +259,7 @@ export class PluginController {
           'success'
         )
         // Refresh UI to show newly created items
-        await refreshLogseqUI()
+        refreshLogseqUI()
       } else {
         const errorMsg = result.errors.map((e) => e.message).join(', ')
         await showMessage(`Import failed: ${errorMsg}`, 'error')
@@ -314,9 +314,9 @@ export class PluginController {
         return
       }
 
-      // Execute import
+      // Execute import - pass the precomputed preview to avoid duplicate parsing
       await showMessage('Importing...', 'info')
-      const result = await this.importer.import(content)
+      const result = await this.importer.import(content, undefined, preview)
 
       if (result.success) {
         await showMessage(
@@ -324,7 +324,7 @@ export class PluginController {
           'success'
         )
         // Refresh UI to show newly created items
-        await refreshLogseqUI()
+        refreshLogseqUI()
       } else {
         const errorMsg = result.errors.map((e) => e.message).join(', ')
         await showMessage(`Import failed: ${errorMsg}`, 'error')

@@ -18,12 +18,68 @@ This file provides context for Claude Code when working on this project.
 ### Logseq DB Graph Documentation
 
 When researching Logseq APIs or behavior, prioritize these resources:
+- **Plugin API Reference**: https://logseq.github.io/plugins/interfaces/IEditorProxy.html (TypeDoc reference)
+- **Plugin API Overview**: https://plugins-doc.logseq.com/ (note: some APIs are DB-specific)
 - **DB Graph Docs**: https://docs.logseq.com/#/page/db%20graphs
-- **Plugin API (DB)**: https://plugins-doc.logseq.com/ (note: some APIs are DB-specific)
 - **Schema Reference**: https://docs.logseq.com/#/page/properties (for property types, cardinality)
 - **Classes**: https://docs.logseq.com/#/page/classes
 
 Avoid referencing file-based graph documentation for ontology/schema features.
+
+### DB Mode API Reference (from IEditorProxy)
+
+**Property Management:**
+```typescript
+// Create or update a property with schema
+upsertProperty(key: string, schema?: {
+  cardinality?: "many" | "one";
+  hide?: boolean;
+  public?: boolean;
+  type?: "default" | "number" | "node" | "date" | "checkbox" | "url";
+}, opts?: { name?: string }): Promise<IEntityID>
+
+getProperty(key: string): Promise<PropertyEntity>
+removeProperty(key: string): Promise<void>
+getAllProperties(): Promise<PropertyEntity[]>
+```
+
+**Tag/Class Management:**
+In Logseq DB mode, **Tags = Classes**. Use these dedicated methods:
+```typescript
+// Create a new tag (class)
+createTag(tagName: string, opts?: { uuid?: string }): Promise<PageEntity>
+
+// Link a property to a tag
+addTagProperty(tagId: BlockIdentity, propertyIdOrName: BlockIdentity): Promise<void>
+removeTagProperty(tagId: BlockIdentity, propertyIdOrName: BlockIdentity): Promise<void>
+
+// Set tag inheritance (parent class)
+addTagExtends(tagId: BlockIdentity, parentTagIdOrName: BlockIdentity): Promise<void>
+removeTagExtends(tagId: BlockIdentity, parentTagIdOrName: BlockIdentity): Promise<void>
+
+// Query tags
+getAllTags(): Promise<PageEntity[]>
+getTag(nameOrIdent: string | number): Promise<PageEntity>
+getTagsByName(tagName: string): Promise<PageEntity[]>
+```
+
+**Block Tag Operations:**
+```typescript
+addBlockTag(blockId: BlockIdentity, tagId: BlockIdentity): Promise<void>
+removeBlockTag(blockId: BlockIdentity, tagId: BlockIdentity): Promise<void>
+```
+
+**Icon Management:**
+```typescript
+// Set icon on a block/page (content blocks only - see limitation below)
+setBlockIcon(blockId: string, iconType: 'tabler-icon' | 'emoji', iconName: string): Promise<void>
+removeBlockIcon(blockId: string): Promise<void>
+```
+> **Known Limitation (Jan 2025):** `setBlockIcon()` does NOT work for property or tag/class entities in DB mode. It only works for content blocks and pages. Attempting to set icons on properties or tags via the plugin API silently fails or shows blank squares. This appears to be a Logseq limitation - icons for schema-level entities (properties, tags) can only be set manually through the Logseq UI, not programmatically via plugins. The importer parses icon data from EDN exports but cannot apply them.
+>
+> Icon types are either `"emoji"` (single emoji character) or `"tabler-icon"` (icon name from Tabler Icons library).
+
+> **Note:** There is no `upsertTag` method - use `createTag` for creation. The plugin ownership restriction still applies: plugins can only modify entities they created.
 
 ## Technology Stack
 
