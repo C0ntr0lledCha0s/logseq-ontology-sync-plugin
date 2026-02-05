@@ -15,7 +15,7 @@ import {
   type MarketplaceTemplate,
 } from './marketplace'
 import { getMainPanelHTML, getMainPanelStyles } from './ui/main-panel'
-import { pickFile, showMessage, showConfirm } from './ui/components'
+import { pickFile, showMessage, showImportConfirm, showProgressDialog } from './ui/components'
 import { getSettings } from './settings'
 import { logger } from './utils/logger'
 
@@ -227,40 +227,51 @@ export class PluginController {
       await showMessage('Parsing template...', 'info')
       const preview = await this.importer.preview(content)
 
-      // Build summary message
-      const summary = this.buildImportSummary(preview)
-
-      // Check for conflicts
-      if (preview.conflicts.length > 0) {
-        const conflictMsg = `\n\nWarning: ${preview.conflicts.length} conflict(s) detected.`
-        const confirmed = showConfirm(summary + conflictMsg + '\n\nProceed with import?')
-        if (!confirmed) {
-          await showMessage('Import cancelled', 'info')
-          return
-        }
-      } else if (preview.summary.totalNew > 0 || preview.summary.totalUpdated > 0) {
-        const confirmed = showConfirm(summary + '\n\nProceed with import?')
-        if (!confirmed) {
-          await showMessage('Import cancelled', 'info')
-          return
-        }
-      } else {
+      // Show confirmation dialog with preview
+      const hasChanges = preview.summary.totalNew > 0 || preview.summary.totalUpdated > 0
+      if (!hasChanges) {
         await showMessage('No changes to import - ontology is already up to date', 'info')
         return
       }
 
-      // Execute import - pass the precomputed preview to avoid duplicate parsing
-      await showMessage('Importing...', 'info')
-      const result = await this.importer.import(content, undefined, preview)
+      const confirmed = await showImportConfirm({
+        newItems: preview.summary.totalNew,
+        updatedItems: preview.summary.totalUpdated,
+        conflicts: preview.conflicts.length,
+      })
+
+      if (!confirmed) {
+        await showMessage('Import cancelled', 'info')
+        return
+      }
+
+      // Show progress dialog
+      const progressDialog = showProgressDialog('Importing Template...')
+
+      // Execute import with progress callback
+      const result = await this.importer.import(
+        content,
+        {
+          onProgress: (progress) => {
+            progressDialog.update({
+              phase: progress.phase.charAt(0).toUpperCase() + progress.phase.slice(1),
+              message: progress.message,
+              current: progress.current,
+              total: progress.total,
+            })
+          },
+        },
+        preview
+      )
 
       if (result.success) {
-        await showMessage(
-          `Successfully imported ${result.applied.classes} classes and ${result.applied.properties} properties`,
-          'success'
+        progressDialog.complete(
+          `Successfully imported ${result.applied.classes} classes and ${result.applied.properties} properties`
         )
         // Refresh UI to show newly created items
         refreshLogseqUI()
       } else {
+        progressDialog.close()
         const errorMsg = result.errors.map((e) => e.message).join(', ')
         await showMessage(`Import failed: ${errorMsg}`, 'error')
       }
@@ -292,40 +303,51 @@ export class PluginController {
       await showMessage('Parsing template...', 'info')
       const preview = await this.importer.preview(content)
 
-      // Build summary message
-      const summary = this.buildImportSummary(preview)
-
-      // Check for conflicts
-      if (preview.conflicts.length > 0) {
-        const conflictMsg = `\n\nWarning: ${preview.conflicts.length} conflict(s) detected.`
-        const confirmed = showConfirm(summary + conflictMsg + '\n\nProceed with import?')
-        if (!confirmed) {
-          await showMessage('Import cancelled', 'info')
-          return
-        }
-      } else if (preview.summary.totalNew > 0 || preview.summary.totalUpdated > 0) {
-        const confirmed = showConfirm(summary + '\n\nProceed with import?')
-        if (!confirmed) {
-          await showMessage('Import cancelled', 'info')
-          return
-        }
-      } else {
+      // Show confirmation dialog with preview
+      const hasChanges = preview.summary.totalNew > 0 || preview.summary.totalUpdated > 0
+      if (!hasChanges) {
         await showMessage('No changes to import - ontology is already up to date', 'info')
         return
       }
 
-      // Execute import - pass the precomputed preview to avoid duplicate parsing
-      await showMessage('Importing...', 'info')
-      const result = await this.importer.import(content, undefined, preview)
+      const confirmed = await showImportConfirm({
+        newItems: preview.summary.totalNew,
+        updatedItems: preview.summary.totalUpdated,
+        conflicts: preview.conflicts.length,
+      })
+
+      if (!confirmed) {
+        await showMessage('Import cancelled', 'info')
+        return
+      }
+
+      // Show progress dialog
+      const progressDialog = showProgressDialog('Importing File...')
+
+      // Execute import with progress callback
+      const result = await this.importer.import(
+        content,
+        {
+          onProgress: (progress) => {
+            progressDialog.update({
+              phase: progress.phase.charAt(0).toUpperCase() + progress.phase.slice(1),
+              message: progress.message,
+              current: progress.current,
+              total: progress.total,
+            })
+          },
+        },
+        preview
+      )
 
       if (result.success) {
-        await showMessage(
-          `Successfully imported ${result.applied.classes} classes and ${result.applied.properties} properties`,
-          'success'
+        progressDialog.complete(
+          `Successfully imported ${result.applied.classes} classes and ${result.applied.properties} properties`
         )
         // Refresh UI to show newly created items
         refreshLogseqUI()
       } else {
+        progressDialog.close()
         const errorMsg = result.errors.map((e) => e.message).join(', ')
         await showMessage(`Import failed: ${errorMsg}`, 'error')
       }
@@ -334,27 +356,6 @@ export class PluginController {
       logger.error('Import failed', error)
       await showMessage(`Import failed: ${message}`, 'error')
     }
-  }
-
-  /**
-   * Build a summary message for the import preview
-   */
-  private buildImportSummary(preview: {
-    summary: { totalNew: number; totalUpdated: number; totalConflicts: number }
-  }): string {
-    const parts: string[] = ['Import Preview:']
-
-    if (preview.summary.totalNew > 0) {
-      parts.push(`  - ${preview.summary.totalNew} new items to add`)
-    }
-    if (preview.summary.totalUpdated > 0) {
-      parts.push(`  - ${preview.summary.totalUpdated} items to update`)
-    }
-    if (preview.summary.totalConflicts > 0) {
-      parts.push(`  - ${preview.summary.totalConflicts} conflicts`)
-    }
-
-    return parts.join('\n')
   }
 
   /**

@@ -2,6 +2,7 @@ import '@logseq/libs'
 import { logger } from './utils/logger'
 import { PluginController } from './plugin-controller'
 import { settingsSchema } from './settings'
+import { registerConfirmDialogHandlers, registerProgressDialogHandlers } from './ui/components'
 
 const pluginId = 'logseq-ontology-sync'
 
@@ -65,6 +66,10 @@ function main(): void {
   // Initialize the plugin controller
   const controller = new PluginController()
   controller.initializeUI()
+
+  // Register dialog handlers (must be called before showing dialogs)
+  registerConfirmDialogHandlers()
+  registerProgressDialogHandlers()
 
   // Provide model for UI event handlers
   logseq.provideModel({
