@@ -990,7 +990,9 @@ export class LogseqOntologyAPI {
       // while 'description' would create a user property with that name
       if (def.description)
         metadataFields.push([tagId, def.description, ':logseq.property/description'])
-      if (def.title) metadataFields.push([tagId, def.title, 'title'])
+      // NOTE: :logseq.class/title CANNOT be set - fails with "Plugins can only upsert its own properties"
+      // This is a Logseq API limitation. Unlike :logseq.property/description which works,
+      // the title field is restricted. (Tested Feb 2025)
       if (def.schemaVersion) metadataFields.push([tagId, def.schemaVersion, 'schema-version'])
 
       for (const [blockId, value, key] of metadataFields) {
@@ -1199,11 +1201,9 @@ export class LogseqOntologyAPI {
           api.Editor.upsertBlockProperty(targetBlock.uuid, 'class/properties', normalizedProps)
         )
       }
-      if (updates.title !== undefined) {
-        updatePromises.push(
-          api.Editor.upsertBlockProperty(targetBlock.uuid, 'title', updates.title)
-        )
-      }
+      // NOTE: updates.title is intentionally NOT applied here.
+      // :logseq.class/title CANNOT be set - fails with "Plugins can only upsert its own properties"
+      // This is a confirmed Logseq API limitation. (Tested Feb 2025)
 
       if (updatePromises.length === 0) {
         logger.debug('No applicable updates for class', { name })

@@ -140,7 +140,7 @@ In Logseq DB mode, **Tags = Classes**. They are the same concept.
 |---------------|----------|--------|------------|
 | ~~**icon (tabler)**~~ | ✅ Implemented | ~~Cannot set icons on classes/tags~~ | Plugin now sets Tabler icons via `setBlockIcon(uuid, 'tabler-icon', 'name')` |
 | **icon (emoji)** | 🔴 Not Supported | Cannot set emoji icons on classes/tags | None - Logseq's emoji lookup table is inaccessible; use Tabler icons instead |
-| **title** | 🟡 Medium | Cannot set display name different from identifier | `upsertBlockProperty` (unreliable) |
+| **title** | 🔴 Not Supported | Cannot set display name different from identifier | None - `:logseq.class/title` blocked by plugin ownership restriction (tested Feb 2025) |
 | ~~**description**~~ | ✅ Resolved | ~~Cannot set system description field~~ | Use `:logseq.property/description` namespaced key |
 | **position** | 🟢 Low | Cannot control UI ordering in class list | None |
 
@@ -342,7 +342,7 @@ This significantly limits the usefulness of ontology sharing and marketplace fea
 | `block/title` | `name` parameter | ✅ |
 | `build/class-extends` | `addTagExtends` | ✅ |
 | `build/class-properties` | `addTagProperty` | ✅ |
-| `logseq.class/title` | — | ❌ |
+| `logseq.class/title` | — | ❌ Blocked by ownership restriction |
 | `logseq.property/description` | `upsertBlockProperty` with `:logseq.property/description` | ✅ |
 | `logseq.class/icon` | `setBlockIcon` | ✅ Tabler icons implemented, emojis not supported |
 | `logseq.class/position` | — | ❌ |
