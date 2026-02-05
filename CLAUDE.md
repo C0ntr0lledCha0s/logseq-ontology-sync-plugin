@@ -71,13 +71,26 @@ removeBlockTag(blockId: BlockIdentity, tagId: BlockIdentity): Promise<void>
 
 **Icon Management:**
 ```typescript
-// Set icon on a block/page (content blocks only - see limitation below)
+// Set icon on a block/page/property/tag
 setBlockIcon(blockId: string, iconType: 'tabler-icon' | 'emoji', iconName: string): Promise<void>
 removeBlockIcon(blockId: string): Promise<void>
 ```
-> **Known Limitation (Jan 2025):** `setBlockIcon()` does NOT work for property or tag/class entities in DB mode. It only works for content blocks and pages. Attempting to set icons on properties or tags via the plugin API silently fails or shows blank squares. This appears to be a Logseq limitation - icons for schema-level entities (properties, tags) can only be set manually through the Logseq UI, not programmatically via plugins. The importer parses icon data from EDN exports but cannot apply them.
+> **Implementation Status (Feb 2025):**
+> - ✅ **Tabler icons are IMPLEMENTED** - The plugin now sets Tabler icons on properties and tags during import/update
+> - ❌ **Emoji icons are NOT supported** - Logseq's emoji lookup table is inaccessible; all emoji formats fail with "Can't find emoji for X"
 >
-> Icon types are either `"emoji"` (single emoji character) or `"tabler-icon"` (icon name from Tabler Icons library).
+> When importing ontology with emoji icons, they are parsed but skipped during application. Only Tabler icons are applied.
+> Icon types are `"tabler-icon"` (icon name from Tabler Icons library) or `"emoji"` (not supported via API).
+
+**Setting System Description Field:**
+```typescript
+// ❌ WRONG - creates a user property named "description"
+await logseq.Editor.upsertBlockProperty(uuid, 'description', 'My description')
+
+// ✅ CORRECT - sets the system logseq.property/description field
+await logseq.Editor.upsertBlockProperty(uuid, ':logseq.property/description', 'My description')
+```
+> **Discovery (Feb 2025):** Using the full namespaced key with colon prefix sets the SYSTEM description field, not a user property. The value is stored as an entity reference internally.
 
 > **Note:** There is no `upsertTag` method - use `createTag` for creation. The plugin ownership restriction still applies: plugins can only modify entities they created.
 
