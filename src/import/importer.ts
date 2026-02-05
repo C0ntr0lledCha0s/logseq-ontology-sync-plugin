@@ -48,6 +48,29 @@ const VALID_PROPERTY_TYPES = [
 ]
 
 /**
+ * Convert a string to camelCase (for property titles)
+ * e.g., "reservation status" -> "reservationStatus"
+ *       "Reservation-Status" -> "reservationStatus"
+ */
+function toCamelCase(str: string): string {
+  if (!str) return str
+  return str
+    .replace(/[-_\s]+(.)?/g, (_, char) => (char ? char.toUpperCase() : ''))
+    .replace(/^[A-Z]/, (char) => char.toLowerCase())
+}
+
+/**
+ * Convert a string to PascalCase (for class/tag titles)
+ * e.g., "reservation status" -> "ReservationStatus"
+ *       "reservation-status" -> "ReservationStatus"
+ */
+function toPascalCase(str: string): string {
+  if (!str) return str
+  const camel = toCamelCase(str)
+  return camel.charAt(0).toUpperCase() + camel.slice(1)
+}
+
+/**
  * Validation result for import templates
  */
 interface ImportValidationResult {
@@ -882,21 +905,39 @@ export class OntologyImporter {
       )
     }
 
+    // Calculate totals for progress tracking
+    const totalItems =
+      preview.newProperties.length +
+      preview.updatedProperties.length +
+      preview.newClasses.length +
+      preview.updatedClasses.length
+    let processedItems = 0
+
     // Create new properties (with small delay between each to avoid rate limiting)
     for (const prop of preview.newProperties) {
+      this.reportProgress({
+        phase: 'importing',
+        current: processedItems,
+        total: totalItems,
+        message: `Creating property: ${prop.name}`,
+      })
       try {
+        // Use explicit title from EDN as-is, or derive from name using camelCase
+        const derivedTitle = prop.title ?? toCamelCase(prop.name)
         const apiProp: APIPropertyDefinition = {
           name: prop.name,
           type: (prop.type as APIPropertyDefinition['type']) || 'default',
           cardinality: prop.cardinality || 'one',
           description: prop.description,
-          title: prop.title,
+          title: derivedTitle,
           hide: prop.hide,
           icon: prop.icon,
           iconType: prop.iconType,
         }
         logger.debug('Creating property:', {
           name: prop.name,
+          originalTitle: prop.title,
+          derivedTitle,
           type: apiProp.type,
           hide: apiProp.hide,
         })
@@ -921,16 +962,24 @@ export class OntologyImporter {
           errors.push({ name: prop.name, error: message })
         }
       }
+      processedItems++
     }
 
     // Update existing properties
     for (const update of preview.updatedProperties) {
+      this.reportProgress({
+        phase: 'importing',
+        current: processedItems,
+        total: totalItems,
+        message: `Updating property: ${update.name}`,
+      })
       try {
         await this.api.updateProperty(update.name, {
           type: update.after.type as APIPropertyDefinition['type'],
           cardinality: update.after.cardinality,
           description: update.after.description,
-          title: update.after.title,
+          // Use explicit title from EDN as-is, or derive from name using camelCase
+          title: update.after.title ?? toCamelCase(update.name),
           hide: update.after.hide,
           icon: update.after.icon,
           iconType: update.after.iconType,
@@ -942,10 +991,17 @@ export class OntologyImporter {
         logger.error(`Failed to update property: ${update.name}`, error)
         errors.push({ name: update.name, error: message })
       }
+      processedItems++
     }
 
     // Create new classes
     for (const cls of preview.newClasses) {
+      this.reportProgress({
+        phase: 'importing',
+        current: processedItems,
+        total: totalItems,
+        message: `Creating class: ${cls.name}`,
+      })
       try {
         // Filter properties to only include those created by this plugin
         // Logseq won't allow linking to properties owned by other sources
@@ -970,7 +1026,8 @@ export class OntologyImporter {
           name: cls.name,
           parent: cls.parent,
           description: cls.description,
-          title: cls.title,
+          // Use explicit title from EDN as-is, or derive from name using PascalCase
+          title: cls.title ?? toPascalCase(cls.name),
           icon: cls.icon,
           iconType: cls.iconType,
           properties: filteredProperties,
@@ -992,10 +1049,17 @@ export class OntologyImporter {
           errors.push({ name: cls.name, error: message })
         }
       }
+      processedItems++
     }
 
     // Update existing classes
     for (const update of preview.updatedClasses) {
+      this.reportProgress({
+        phase: 'importing',
+        current: processedItems,
+        total: totalItems,
+        message: `Updating class: ${update.name}`,
+      })
       try {
         // Filter properties to only include those created by this plugin
         let filteredProperties: string[] | undefined = undefined
@@ -1011,7 +1075,8 @@ export class OntologyImporter {
         await this.api.updateClass(update.name, {
           parent: update.after.parent,
           description: update.after.description,
-          title: update.after.title,
+          // Use explicit title from EDN as-is, or derive from name using PascalCase
+          title: update.after.title ?? toPascalCase(update.name),
           icon: update.after.icon,
           iconType: update.after.iconType,
           properties: filteredProperties,
@@ -1023,6 +1088,7 @@ export class OntologyImporter {
         logger.error(`Failed to update class: ${update.name}`, error)
         errors.push({ name: update.name, error: message })
       }
+      processedItems++
     }
 
     // Log any errors that occurred
@@ -1112,9 +1178,27 @@ export class OntologyImporter {
     const opts = { ...this.options, ...options }
     const errors: ImportError[] = []
 
+    // Update instance options so reportProgress uses the passed callback
+    const previousOptions = this.options
+    this.options = opts
+
     try {
       // Use precomputed preview if provided, otherwise generate it
       const preview = precomputedPreview ?? (await this.preview(content))
+
+      // Report initial progress with correct totals
+      const totalItems =
+        preview.newProperties.length +
+        preview.updatedProperties.length +
+        preview.newClasses.length +
+        preview.updatedClasses.length
+
+      this.reportProgress({
+        phase: 'importing',
+        current: 0,
+        total: totalItems,
+        message: 'Starting import...',
+      })
 
       // Check for unresolved conflicts
       if (preview.conflicts.length > 0 && opts.conflictStrategy === 'ask') {
@@ -1145,22 +1229,8 @@ export class OntologyImporter {
         }
       }
 
-      // Apply changes
-      this.reportProgress({
-        phase: 'importing',
-        current: 0,
-        total: 1,
-        message: 'Applying changes...',
-      })
-
+      // Apply changes (applyChanges reports granular progress)
       const applied = await this.applyChanges(preview)
-
-      this.reportProgress({
-        phase: 'importing',
-        current: 1,
-        total: 1,
-        message: 'Import complete',
-      })
 
       return {
         success: true,
@@ -1194,6 +1264,9 @@ export class OntologyImporter {
         duration: Date.now() - startTime,
         dryRun: opts.dryRun,
       }
+    } finally {
+      // Restore previous options
+      this.options = previousOptions
     }
   }
 }

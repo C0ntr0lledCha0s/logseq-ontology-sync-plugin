@@ -538,6 +538,7 @@ export class LogseqOntologyAPI {
       }
 
       // Build opts with original name to preserve casing
+      // The opts.name parameter sets the display title in Logseq
       const opts: { name?: string } = {}
       if (def.title || def.name !== normalizedKey) {
         // Use title if provided, otherwise preserve original name casing
@@ -550,6 +551,9 @@ export class LogseqOntologyAPI {
         key: normalizedKey,
         schema: schemaOptions,
         opts,
+        titleSource: def.title ? 'explicit' : 'derived-from-name',
+        defTitle: def.title,
+        defName: def.name,
       })
       const result = await editor.upsertProperty(normalizedKey, schemaOptions, opts)
 
@@ -580,6 +584,12 @@ export class LogseqOntologyAPI {
         if (def.description)
           metadataFields.push([uuid, def.description, ':logseq.property/description'])
         if (def.schemaVersion) metadataFields.push([uuid, def.schemaVersion, 'schema-version'])
+
+        // Try setting the display title via :block/title
+        // Discovery (Feb 2025): opts.name in upsertProperty does NOT reliably set display title
+        // ':logseq.property/title' fails with an error
+        // Trying ':block/title' as that's what Logseq uses internally for display names
+        if (def.title) metadataFields.push([uuid, def.title, ':block/title'])
 
         // Set metadata via upsertBlockProperty
         for (const [blockId, value, key] of metadataFields) {
@@ -752,10 +762,14 @@ export class LogseqOntologyAPI {
           api.Editor.upsertBlockProperty(targetBlock.uuid, 'property/hide?', updates.hide)
         )
       }
+      // NOTE: Property title CANNOT be updated via upsertBlockProperty.
+      // ':logseq.property/title' fails with an error (Discovery: Feb 2025).
+      // Title can only be set during creation via upsertProperty opts.name parameter.
       if (updates.title !== undefined) {
-        updatePromises.push(
-          api.Editor.upsertBlockProperty(targetBlock.uuid, 'title', updates.title)
-        )
+        logger.debug('Property title update requested but not supported via API', {
+          name,
+          requestedTitle: updates.title,
+        })
       }
 
       if (updatePromises.length === 0) {
