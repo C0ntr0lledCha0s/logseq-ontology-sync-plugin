@@ -40,8 +40,9 @@ const EXPECTED_PROPERTY_KEYS = {
   classType: 'block/type',
   classParent: 'class/parent',
   classProperties: 'class/properties',
-  // Common keys
-  description: 'description',
+  // Common keys - use namespaced key for system description field
+  // Discovery (Feb 2025): ':logseq.property/description' sets the SYSTEM description
+  description: ':logseq.property/description',
   title: 'title',
   icon: 'icon',
   schemaVersion: 'schema-version',

@@ -168,6 +168,133 @@ function isPluginOwnershipError(error: unknown): boolean {
 }
 
 // ============================================================================
+// Safe API Call Wrapper
+// ============================================================================
+
+/**
+ * Check if an error is a DataCloneError from postMessage serialization
+ *
+ * Logseq's plugin API uses postMessage for IPC. Some API methods return
+ * objects containing functions or circular references that can't be
+ * serialized. This causes DataCloneError, but the actual operation succeeds.
+ */
+function isDataCloneError(error: unknown): boolean {
+  if (error instanceof Error) {
+    return error.name === 'DataCloneError' || error.message.includes('could not be cloned')
+  }
+  if (typeof error === 'string') {
+    return error.includes('DataCloneError') || error.includes('could not be cloned')
+  }
+  return false
+}
+
+/**
+ * Safely call a Logseq API method that may return non-serializable data
+ *
+ * Some Logseq APIs (addTagProperty, addTagExtends, upsertBlockProperty)
+ * return values that contain functions or circular references. When these
+ * are serialized for postMessage IPC, they cause DataCloneError. However,
+ * the actual operation succeeds - only the return value serialization fails.
+ *
+ * This wrapper catches DataCloneError and returns undefined instead of
+ * letting the error propagate as an uncaught promise rejection.
+ *
+ * @param apiCall - Promise from a Logseq API call
+ * @param context - Description for logging purposes
+ * @returns The result, or undefined if DataCloneError occurred
+ */
+async function safeApiCall<T>(apiCall: Promise<T>, context: string): Promise<T | undefined> {
+  try {
+    return await apiCall
+  } catch (error) {
+    if (isDataCloneError(error)) {
+      // Operation succeeded but return value couldn't be serialized
+      // This is expected for some Logseq APIs - log at debug level
+      logger.debug(`API call succeeded but result not serializable: ${context}`)
+      return undefined
+    }
+    throw error
+  }
+}
+
+// ============================================================================
+// Icon Support
+// ============================================================================
+
+/**
+ * Set a Tabler icon on an entity (property, tag, or block)
+ *
+ * @remarks
+ * Only Tabler icons are supported via the plugin API. Emoji icons fail
+ * because Logseq's internal emoji lookup table is not accessible to plugins.
+ * (Discovery: Feb 2025)
+ *
+ * @param uuid - The entity UUID
+ * @param icon - The icon identifier
+ * @param iconType - The icon type ('tabler-icon' or 'emoji')
+ * @param entityDescription - Description for logging (e.g., "property 'my-prop'")
+ * @returns true if icon was set, false if skipped (emoji or no icon)
+ */
+async function setTablerIcon(
+  uuid: string,
+  icon: string | undefined,
+  iconType: 'emoji' | 'tabler-icon' | undefined,
+  entityDescription: string
+): Promise<boolean> {
+  // Skip if no icon provided
+  if (!icon) {
+    return false
+  }
+
+  // Only Tabler icons are supported - emoji icons fail with lookup errors
+  if (iconType !== 'tabler-icon') {
+    logger.debug(`Skipping icon for ${entityDescription}: emoji icons not supported via API`, {
+      icon,
+      iconType: iconType || 'unknown',
+    })
+    return false
+  }
+
+  if (!isLogseqAvailable()) {
+    logger.warn(`Cannot set icon for ${entityDescription}: Logseq API not available`)
+    return false
+  }
+
+  const api = getLogseqAPI()
+
+  // Type for Editor with setBlockIcon
+  type EditorWithIcon = typeof api.Editor & {
+    setBlockIcon?: (
+      blockId: string,
+      iconType: 'tabler-icon' | 'emoji',
+      iconName: string
+    ) => Promise<void>
+  }
+
+  const editor = api.Editor as EditorWithIcon
+
+  if (!editor.setBlockIcon) {
+    logger.debug(`setBlockIcon API not available, skipping icon for ${entityDescription}`)
+    return false
+  }
+
+  try {
+    await safeApiCall(
+      editor.setBlockIcon(uuid, 'tabler-icon', icon),
+      `setBlockIcon('tabler-icon', '${icon}') for ${entityDescription}`
+    )
+    logger.info(`Set tabler icon for ${entityDescription}`, { icon })
+    return true
+  } catch (error) {
+    logger.warn(`Could not set icon for ${entityDescription}`, {
+      icon,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return false
+  }
+}
+
+// ============================================================================
 // Validation
 // ============================================================================
 
@@ -447,19 +574,32 @@ export class LogseqOntologyAPI {
       if (uuid && editor.upsertBlockProperty) {
         const metadataFields: Array<[string, unknown, string]> = []
 
-        if (def.description) metadataFields.push([uuid, def.description, 'description'])
+        // Use the full namespaced key for system description field
+        // Discovery (Feb 2025): ':logseq.property/description' sets the SYSTEM description,
+        // while 'description' would create a user property with that name
+        if (def.description)
+          metadataFields.push([uuid, def.description, ':logseq.property/description'])
         if (def.schemaVersion) metadataFields.push([uuid, def.schemaVersion, 'schema-version'])
 
-        // Set description via upsertBlockProperty
+        // Set metadata via upsertBlockProperty
         for (const [blockId, value, key] of metadataFields) {
           try {
-            await editor.upsertBlockProperty(blockId, key, value)
+            // Use safeApiCall to handle DataCloneError from postMessage serialization
+            await safeApiCall(
+              editor.upsertBlockProperty(blockId, key, value),
+              `upsertBlockProperty(${key}) for property "${def.name}"`
+            )
             logger.info(`Set ${key} for property`, { property: def.name })
           } catch (metaError) {
             logger.warn(`Could not set ${key} for property "${def.name}"`, {
               error: metaError instanceof Error ? metaError.message : String(metaError),
             })
           }
+        }
+
+        // Set Tabler icon if provided (emoji icons not supported via API)
+        if (def.icon) {
+          await setTablerIcon(uuid, def.icon, def.iconType, `property "${def.name}"`)
         }
       }
 
@@ -598,8 +738,13 @@ export class LogseqOntologyAPI {
         )
       }
       if (updates.description !== undefined) {
+        // Use the full namespaced key for system description field
         updatePromises.push(
-          api.Editor.upsertBlockProperty(targetBlock.uuid, 'description', updates.description)
+          api.Editor.upsertBlockProperty(
+            targetBlock.uuid,
+            ':logseq.property/description',
+            updates.description
+          )
         )
       }
       if (updates.hide !== undefined) {
@@ -620,14 +765,11 @@ export class LogseqOntologyAPI {
 
       await Promise.all(updatePromises)
 
-      // NOTE: Icon setting for properties is NOT supported in Logseq DB mode.
-      // The setBlockIcon API only works for content blocks and pages, not for
-      // property/tag entities which are schema-level constructs.
+      // Set Tabler icon if provided (emoji icons not supported via API)
+      // NOTE: Tabler icons work via setBlockIcon, emoji icons fail due to
+      // inaccessible emoji lookup table. (Discovery: Feb 2025)
       if (updates.icon !== undefined) {
-        logger.debug('Skipping icon for property (not supported in DB mode)', {
-          property: name,
-          icon: updates.icon,
-        })
+        await setTablerIcon(targetBlock.uuid, updates.icon, updates.iconType, `property "${name}"`)
       }
 
       logger.info('Property updated', { name, updatedFields: updateKeys })
@@ -843,13 +985,21 @@ export class LogseqOntologyAPI {
     if (editor.upsertBlockProperty) {
       const metadataFields: Array<[string, unknown, string]> = []
 
-      if (def.description) metadataFields.push([tagId, def.description, 'description'])
+      // Use the full namespaced key for system description field
+      // Discovery (Feb 2025): ':logseq.property/description' sets the SYSTEM description,
+      // while 'description' would create a user property with that name
+      if (def.description)
+        metadataFields.push([tagId, def.description, ':logseq.property/description'])
       if (def.title) metadataFields.push([tagId, def.title, 'title'])
       if (def.schemaVersion) metadataFields.push([tagId, def.schemaVersion, 'schema-version'])
 
       for (const [blockId, value, key] of metadataFields) {
         try {
-          await editor.upsertBlockProperty(blockId, key, value)
+          // Use safeApiCall to handle DataCloneError from postMessage serialization
+          await safeApiCall(
+            editor.upsertBlockProperty(blockId, key, value),
+            `upsertBlockProperty(${key}) for tag "${def.name}"`
+          )
           logger.debug(`Set ${key} for tag`, { tag: def.name, [key]: value })
         } catch (metaError) {
           // Log but don't fail - metadata is optional
@@ -870,7 +1020,11 @@ export class LogseqOntologyAPI {
         try {
           // Normalize property name to match Logseq's internal format
           const normalizedProp = propName.toLowerCase().replace(/\s+/g, '-')
-          await editor.addTagProperty(tagId, normalizedProp)
+          // Use safeApiCall to handle DataCloneError from postMessage serialization
+          await safeApiCall(
+            editor.addTagProperty(tagId, normalizedProp),
+            `addTagProperty("${normalizedProp}") for tag "${def.name}"`
+          )
           logger.debug('Added property to tag', { tag: def.name, property: normalizedProp })
         } catch (propError) {
           // Log but don't fail - property might not exist or be owned by another plugin
@@ -885,7 +1039,11 @@ export class LogseqOntologyAPI {
     if (def.parent && editor.addTagExtends) {
       logger.debug('Setting tag parent', { tag: def.name, parent: def.parent })
       try {
-        await editor.addTagExtends(tagId, def.parent)
+        // Use safeApiCall to handle DataCloneError from postMessage serialization
+        await safeApiCall(
+          editor.addTagExtends(tagId, def.parent),
+          `addTagExtends("${def.parent}") for tag "${def.name}"`
+        )
         logger.debug('Parent set for tag', { tag: def.name, parent: def.parent })
       } catch (parentError) {
         // Log but don't fail - parent tag might not exist
@@ -893,6 +1051,11 @@ export class LogseqOntologyAPI {
           error: parentError instanceof Error ? parentError.message : String(parentError),
         })
       }
+    }
+
+    // Set Tabler icon if provided (emoji icons not supported via API)
+    if (def.icon) {
+      await setTablerIcon(tagId, def.icon, def.iconType, `class/tag "${def.name}"`)
     }
 
     return {
@@ -1015,8 +1178,13 @@ export class LogseqOntologyAPI {
       const updatePromises: Promise<void>[] = []
 
       if (updates.description !== undefined) {
+        // Use the full namespaced key for system description field
         updatePromises.push(
-          api.Editor.upsertBlockProperty(targetBlock.uuid, 'description', updates.description)
+          api.Editor.upsertBlockProperty(
+            targetBlock.uuid,
+            ':logseq.property/description',
+            updates.description
+          )
         )
       }
       if (updates.parent !== undefined) {
@@ -1044,14 +1212,11 @@ export class LogseqOntologyAPI {
 
       await Promise.all(updatePromises)
 
-      // NOTE: Icon setting for classes/tags is NOT supported in Logseq DB mode.
-      // The setBlockIcon API only works for content blocks and pages, not for
-      // class/tag entities which are schema-level constructs.
+      // Set Tabler icon if provided (emoji icons not supported via API)
+      // NOTE: Tabler icons work via setBlockIcon, emoji icons fail due to
+      // inaccessible emoji lookup table. (Discovery: Feb 2025)
       if (updates.icon !== undefined) {
-        logger.debug('Skipping icon for class (not supported in DB mode)', {
-          class: name,
-          icon: updates.icon,
-        })
+        await setTablerIcon(targetBlock.uuid, updates.icon, updates.iconType, `class "${name}"`)
       }
 
       logger.info('Class updated', { name, updatedFields: updateKeys })
