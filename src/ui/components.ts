@@ -273,13 +273,19 @@ export function showImportConfirm(preview: ImportPreviewData): Promise<boolean> 
     // Build details list
     const detailItems: string[] = []
     if (preview.newItems > 0) {
-      detailItems.push(`<div class="ontology-confirm-details-item"><span class="icon">+</span> ${preview.newItems} new item${preview.newItems !== 1 ? 's' : ''} to add</div>`)
+      detailItems.push(
+        `<div class="ontology-confirm-details-item"><span class="icon">+</span> ${preview.newItems} new item${preview.newItems !== 1 ? 's' : ''} to add</div>`
+      )
     }
     if (preview.updatedItems > 0) {
-      detailItems.push(`<div class="ontology-confirm-details-item"><span class="icon">↻</span> ${preview.updatedItems} item${preview.updatedItems !== 1 ? 's' : ''} to update</div>`)
+      detailItems.push(
+        `<div class="ontology-confirm-details-item"><span class="icon">↻</span> ${preview.updatedItems} item${preview.updatedItems !== 1 ? 's' : ''} to update</div>`
+      )
     }
     if (preview.conflicts > 0) {
-      detailItems.push(`<div class="ontology-confirm-details-item"><span class="icon" style="color: #f57c00">⚠</span> ${preview.conflicts} conflict${preview.conflicts !== 1 ? 's' : ''} detected</div>`)
+      detailItems.push(
+        `<div class="ontology-confirm-details-item"><span class="icon" style="color: #f57c00">⚠</span> ${preview.conflicts} conflict${preview.conflicts !== 1 ? 's' : ''} detected</div>`
+      )
     }
 
     const template = `

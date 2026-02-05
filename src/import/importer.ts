@@ -55,8 +55,10 @@ const VALID_PROPERTY_TYPES = [
 function toCamelCase(str: string): string {
   if (!str) return str
   return str
-    .replace(/[-_\s]+(.)?/g, (_, char) => (char ? char.toUpperCase() : ''))
-    .replace(/^[A-Z]/, (char) => char.toLowerCase())
+    .replace(/[-_\s]+(.)?/g, (_: string, char: string | undefined) =>
+      char ? char.toUpperCase() : ''
+    )
+    .replace(/^[A-Z]/, (char: string) => char.toLowerCase())
 }
 
 /**
