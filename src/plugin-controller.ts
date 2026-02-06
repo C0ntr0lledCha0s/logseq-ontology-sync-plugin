@@ -9,8 +9,44 @@ import { OntologyImporter } from './import'
 import { SyncEngine } from './sync'
 import { SourceRegistry } from './sources'
 import { LogseqOntologyAPI } from './api'
-import { pickFile, showMessage, showConfirm } from './ui/components'
+import {
+  fetchMarketplaceTemplates,
+  fetchTemplateContent,
+  type MarketplaceTemplate,
+} from './marketplace'
+import { getMainPanelHTML, getMainPanelStyles } from './ui/main-panel'
+import { pickFile, showMessage, showImportConfirm, showProgressDialog } from './ui/components'
+import { getSettings } from './settings'
 import { logger } from './utils/logger'
+
+/**
+ * Detect if Logseq is in dark mode
+ */
+async function isDarkMode(): Promise<boolean> {
+  try {
+    const configs = await logseq.App.getUserConfigs()
+    // Theme can be 'light', 'dark', or a custom theme name
+    const theme = configs.preferredThemeMode
+    return theme === 'dark'
+  } catch {
+    // Default to light mode if detection fails
+    return false
+  }
+}
+
+/**
+ * Refresh the Logseq UI to show newly created pages
+ * Navigates to All Pages view to ensure new items are visible
+ */
+function refreshLogseqUI(): void {
+  try {
+    // Navigate to all-pages to show newly created pages/properties
+    logseq.App.pushState('all-pages')
+    logger.debug('Navigated to all-pages to show new items')
+  } catch (error) {
+    logger.warn('Failed to refresh UI', error)
+  }
+}
 
 /**
  * Plugin Controller class
@@ -27,6 +63,11 @@ export class PluginController {
   private sourceRegistry: SourceRegistry
   private api: LogseqOntologyAPI
 
+  // UI state
+  private templates: MarketplaceTemplate[] | null = null
+  private isLoading = false
+  private error: string | null = null
+
   constructor() {
     this.api = new LogseqOntologyAPI()
     this.importer = new OntologyImporter()
@@ -37,11 +78,217 @@ export class PluginController {
   }
 
   /**
-   * Handle the import command
-   * Opens a file picker and imports the selected template
+   * Initialize the UI
    */
-  async handleImport(): Promise<void> {
+  initializeUI(): void {
+    // Inject styles into plugin iframe
+    const style = document.createElement('style')
+    style.textContent = getMainPanelStyles()
+    document.head.appendChild(style)
+
+    // Set up the main UI container styles
+    logseq.setMainUIInlineStyle({
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      right: '0',
+      bottom: '0',
+      zIndex: '999',
+    })
+
+    // Create container for panel
+    const container = document.createElement('div')
+    container.id = 'ontology-panel-root'
+    document.body.appendChild(container)
+
+    logger.info('UI initialized')
+  }
+
+  /**
+   * Show the main panel
+   */
+  async showPanel(): Promise<void> {
+    // Apply theme before showing
+    const darkMode = await isDarkMode()
+    document.body.setAttribute('data-theme', darkMode ? 'dark' : 'light')
+
+    this.updatePanelUI()
+    logseq.showMainUI({ autoFocus: true })
+
+    // Load templates if not already loaded
+    if (!this.templates && !this.isLoading) {
+      await this.loadMarketplace()
+    }
+  }
+
+  /**
+   * Hide the main panel
+   */
+  closePanel(): void {
+    logseq.hideMainUI()
+  }
+
+  /**
+   * Update the panel UI with current state
+   */
+  private updatePanelUI(): void {
+    const container = document.getElementById('ontology-panel-root')
+    if (container) {
+      container.innerHTML = getMainPanelHTML(this.templates, this.isLoading, this.error)
+      this.attachEventListeners(container)
+    }
+  }
+
+  /**
+   * Attach event listeners to panel elements
+   */
+  private attachEventListeners(container: HTMLElement): void {
+    // Close panel (backdrop and X button)
+    container.querySelectorAll('[data-action="close"]').forEach((el) => {
+      el.addEventListener('click', () => this.closePanel())
+    })
+
+    // Import from file
+    container.querySelector('[data-action="import-file"]')?.addEventListener('click', () => {
+      void this.importFromFile()
+    })
+
+    // Export template
+    container.querySelector('[data-action="export"]')?.addEventListener('click', () => {
+      void this.exportTemplate()
+    })
+
+    // Refresh marketplace
+    container.querySelector('[data-action="refresh"]')?.addEventListener('click', () => {
+      void this.refreshMarketplace()
+    })
+
+    // Open settings
+    container.querySelector('[data-action="settings"]')?.addEventListener('click', () => {
+      this.openSettings()
+    })
+
+    // Import template buttons
+    container.querySelectorAll('[data-action="import-template"]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const url = el.getAttribute('data-url')
+        const name = el.getAttribute('data-name')
+        if (url && name) {
+          void this.importTemplate(url, name)
+        }
+      })
+    })
+  }
+
+  /**
+   * Load marketplace templates
+   */
+  async loadMarketplace(): Promise<void> {
+    this.isLoading = true
+    this.error = null
+    this.updatePanelUI()
+
     try {
+      const settings = getSettings()
+      const result = await fetchMarketplaceTemplates(settings.marketplaceRepo)
+      this.templates = result.templates
+      this.error = null
+      logger.info('Marketplace loaded', { count: this.templates.length })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load marketplace'
+      this.error = message
+      logger.error('Failed to load marketplace', err)
+    } finally {
+      this.isLoading = false
+      this.updatePanelUI()
+    }
+  }
+
+  /**
+   * Refresh the marketplace
+   */
+  async refreshMarketplace(): Promise<void> {
+    this.templates = null
+    await this.loadMarketplace()
+  }
+
+  /**
+   * Import a template from the marketplace
+   */
+  async importTemplate(url: string, name: string): Promise<void> {
+    try {
+      this.closePanel()
+      await showMessage(`Fetching ${name}...`, 'info')
+
+      const content = await fetchTemplateContent(url)
+      logger.info('Template fetched', { name, size: content.length })
+
+      // Generate preview
+      await showMessage('Parsing template...', 'info')
+      const preview = await this.importer.preview(content)
+
+      // Show confirmation dialog with preview
+      const hasChanges = preview.summary.totalNew > 0 || preview.summary.totalUpdated > 0
+      if (!hasChanges) {
+        await showMessage('No changes to import - ontology is already up to date', 'info')
+        return
+      }
+
+      const confirmed = await showImportConfirm({
+        newItems: preview.summary.totalNew,
+        updatedItems: preview.summary.totalUpdated,
+        conflicts: preview.conflicts.length,
+      })
+
+      if (!confirmed) {
+        await showMessage('Import cancelled', 'info')
+        return
+      }
+
+      // Show progress dialog
+      const progressDialog = showProgressDialog('Importing Template...')
+
+      // Execute import with progress callback
+      const result = await this.importer.import(
+        content,
+        {
+          onProgress: (progress) => {
+            progressDialog.update({
+              phase: progress.phase.charAt(0).toUpperCase() + progress.phase.slice(1),
+              message: progress.message,
+              current: progress.current,
+              total: progress.total,
+            })
+          },
+        },
+        preview
+      )
+
+      if (result.success) {
+        progressDialog.complete(
+          `Successfully imported ${result.applied.classes} classes and ${result.applied.properties} properties`
+        )
+        // Refresh UI to show newly created items
+        refreshLogseqUI()
+      } else {
+        progressDialog.close()
+        const errorMsg = result.errors.map((e) => e.message).join(', ')
+        await showMessage(`Import failed: ${errorMsg}`, 'error')
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      logger.error('Template import failed', error)
+      await showMessage(`Import failed: ${message}`, 'error')
+    }
+  }
+
+  /**
+   * Handle the import from file command
+   */
+  async importFromFile(): Promise<void> {
+    try {
+      this.closePanel()
+
       // Pick file using browser file picker
       const file = await pickFile('.edn')
       if (!file) {
@@ -56,38 +303,51 @@ export class PluginController {
       await showMessage('Parsing template...', 'info')
       const preview = await this.importer.preview(content)
 
-      // Build summary message
-      const summary = this.buildImportSummary(preview)
-
-      // Check for conflicts
-      if (preview.conflicts.length > 0) {
-        const conflictMsg = `\n\nWarning: ${preview.conflicts.length} conflict(s) detected.`
-        const confirmed = showConfirm(summary + conflictMsg + '\n\nProceed with import?')
-        if (!confirmed) {
-          await showMessage('Import cancelled', 'info')
-          return
-        }
-      } else if (preview.summary.totalNew > 0 || preview.summary.totalUpdated > 0) {
-        const confirmed = showConfirm(summary + '\n\nProceed with import?')
-        if (!confirmed) {
-          await showMessage('Import cancelled', 'info')
-          return
-        }
-      } else {
+      // Show confirmation dialog with preview
+      const hasChanges = preview.summary.totalNew > 0 || preview.summary.totalUpdated > 0
+      if (!hasChanges) {
         await showMessage('No changes to import - ontology is already up to date', 'info')
         return
       }
 
-      // Execute import
-      await showMessage('Importing...', 'info')
-      const result = await this.importer.import(content)
+      const confirmed = await showImportConfirm({
+        newItems: preview.summary.totalNew,
+        updatedItems: preview.summary.totalUpdated,
+        conflicts: preview.conflicts.length,
+      })
+
+      if (!confirmed) {
+        await showMessage('Import cancelled', 'info')
+        return
+      }
+
+      // Show progress dialog
+      const progressDialog = showProgressDialog('Importing File...')
+
+      // Execute import with progress callback
+      const result = await this.importer.import(
+        content,
+        {
+          onProgress: (progress) => {
+            progressDialog.update({
+              phase: progress.phase.charAt(0).toUpperCase() + progress.phase.slice(1),
+              message: progress.message,
+              current: progress.current,
+              total: progress.total,
+            })
+          },
+        },
+        preview
+      )
 
       if (result.success) {
-        await showMessage(
-          `Successfully imported ${result.applied.classes} classes and ${result.applied.properties} properties`,
-          'success'
+        progressDialog.complete(
+          `Successfully imported ${result.applied.classes} classes and ${result.applied.properties} properties`
         )
+        // Refresh UI to show newly created items
+        refreshLogseqUI()
       } else {
+        progressDialog.close()
         const errorMsg = result.errors.map((e) => e.message).join(', ')
         await showMessage(`Import failed: ${errorMsg}`, 'error')
       }
@@ -99,31 +359,12 @@ export class PluginController {
   }
 
   /**
-   * Build a summary message for the import preview
-   */
-  private buildImportSummary(preview: {
-    summary: { totalNew: number; totalUpdated: number; totalConflicts: number }
-  }): string {
-    const parts: string[] = ['Import Preview:']
-
-    if (preview.summary.totalNew > 0) {
-      parts.push(`  - ${preview.summary.totalNew} new items to add`)
-    }
-    if (preview.summary.totalUpdated > 0) {
-      parts.push(`  - ${preview.summary.totalUpdated} items to update`)
-    }
-    if (preview.summary.totalConflicts > 0) {
-      parts.push(`  - ${preview.summary.totalConflicts} conflicts`)
-    }
-
-    return parts.join('\n')
-  }
-
-  /**
    * Handle the export command
    */
-  async handleExport(): Promise<void> {
+  async exportTemplate(): Promise<void> {
     try {
+      this.closePanel()
+
       // Get existing ontology from graph
       const [properties, classes] = await Promise.all([
         this.api.getExistingProperties(),
@@ -150,6 +391,14 @@ export class PluginController {
       logger.error('Export failed', error)
       await showMessage(`Export failed: ${message}`, 'error')
     }
+  }
+
+  /**
+   * Open plugin settings
+   */
+  openSettings(): void {
+    this.closePanel()
+    logseq.showSettingsUI()
   }
 
   /**
@@ -189,10 +438,6 @@ export class PluginController {
       if (!hasUpdates) {
         await showMessage('All sources are up to date', 'success')
       }
-
-      // TODO: Implement full sync workflow
-      // - Show preview of changes
-      // - Apply updates with user confirmation
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
       logger.error('Sync failed', error)
@@ -213,7 +458,7 @@ export class PluginController {
           'No sources configured.\n\n' +
             'To add sources, you can:\n' +
             '1. Use the import command to import a local file\n' +
-            '2. Configure sources in plugin settings (coming soon)',
+            '2. Configure sources in plugin settings',
           'info'
         )
       } else {
@@ -225,12 +470,6 @@ export class PluginController {
           'info'
         )
       }
-
-      // TODO: Implement source management UI
-      // - List sources with status
-      // - Add/remove sources
-      // - Enable/disable sources
-      // - Configure sync settings
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
       logger.error('Source management failed', error)

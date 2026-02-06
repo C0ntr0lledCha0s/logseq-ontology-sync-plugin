@@ -189,6 +189,10 @@ export interface PropertyDefinition {
   position?: string
   /** Whether to hide the property in UI */
   hide?: boolean
+  /** Icon for UI display (emoji-mart id or tabler-icon name) */
+  icon?: string
+  /** Icon type for setBlockIcon API ('emoji' or 'tabler-icon') */
+  iconType?: 'emoji' | 'tabler-icon'
   /** Classes this property is associated with */
   classes?: string[]
 
@@ -258,8 +262,10 @@ export interface ClassDefinition {
   properties?: string[]
 
   // UI
-  /** Icon for UI display */
+  /** Icon for UI display (emoji-mart id or tabler-icon name) */
   icon?: string
+  /** Icon type for setBlockIcon API ('emoji' or 'tabler-icon') */
+  iconType?: 'emoji' | 'tabler-icon'
   /** Position hint for UI ordering */
   position?: string
 
