@@ -274,6 +274,23 @@ Available template categories:
 
 7. **fs/promises Warning**: The `SourceFetcher` dynamically imports `fs/promises` for Node/Bun environments. This shows a Vite warning during build but is intentional.
 
+### Native EDN Import Research (Feb 2025)
+
+8. **Native Import vs Plugin API**: Logseq's native "Import > EDN to DB Graph" creates entities in the `user.*` namespace, while plugin API creates entities in `plugin.property.{plugin-name}/*` namespace. Plugins can READ all entities but can only MODIFY entities in their own namespace.
+
+9. **Undocumented `importEdn` API**: `logseq.Editor.importEdn()` exists at runtime but is a non-functional stub. It returns `null` but creates no entities. The native import uses internal ClojureScript handlers not exposed to plugins.
+
+10. **Hybrid Workflow Option**: For user-owned entities, a hybrid approach is viable: plugin prepares EDN file, user imports via native menu. See `docs/plugin/native-edn-import-research.md` for full details.
+
+## Documentation
+
+- `docs/plugin/architecture.md` - Plugin system architecture
+- `docs/plugin/api-spec.md` - API specifications
+- `docs/plugin/technical-spec.md` - Technical specifications
+- `docs/plugin/native-edn-import-research.md` - Native EDN import research
+- `docs/plugin/edn-parser-analysis.md` - EDN parser analysis
+- `docs/examples/crm-test-minimal.edn` - Minimal test EDN file for native import
+
 ## Related Issues
 
 - Issue #24: Import from URL or file (implemented)

@@ -1,0 +1,49 @@
+;; Minimal CRM Template for Testing Native EDN Import
+;;
+;; This file demonstrates the native Logseq EDN format for ontology import.
+;; Use via: Menu > Import > EDN to DB Graph
+;;
+;; Contains:
+;; - 3 properties: email, telephone, jobTitle
+;; - 2 classes: Person, Organization
+;; - Icons, descriptions, and class-property relationships
+
+{:properties
+ #:user.property{:email-TEST01
+                 {:db/cardinality :db.cardinality/one,
+                  :logseq.property/type :default,
+                  :block/title "email",
+                  :build/properties
+                  #:logseq.property{:description "Email address for contact."}},
+                 :telephone-TEST02
+                 {:db/cardinality :db.cardinality/one,
+                  :logseq.property/type :default,
+                  :block/title "telephone",
+                  :build/properties
+                  #:logseq.property{:description "Phone number for contact."}},
+                 :jobTitle-TEST03
+                 {:db/cardinality :db.cardinality/one,
+                  :logseq.property/type :default,
+                  :block/title "jobTitle",
+                  :build/properties
+                  #:logseq.property{:icon {:type :tabler-icon, :id "Briefcase"},
+                                    :description "Job or role title."}}}
+ :classes
+ #:user.class{:Person-TEST01
+              {:block/title "Person",
+               :build/class-properties
+               [:user.property/email-TEST01
+                :user.property/telephone-TEST02
+                :user.property/jobTitle-TEST03],
+               :build/properties
+               #:logseq.property{:icon {:type :tabler-icon, :id "User"},
+                                 :description "A person contact."}},
+              :Organization-TEST02
+              {:block/title "Organization",
+               :build/class-properties
+               [:user.property/email-TEST01
+                :user.property/telephone-TEST02],
+               :build/properties
+               #:logseq.property{:icon {:type :tabler-icon, :id "Building"},
+                                 :description "A business or organization."}}}
+ :logseq.db.sqlite.export/export-type :graph-ontology}
