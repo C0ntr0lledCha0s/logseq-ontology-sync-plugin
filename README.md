@@ -1,15 +1,8 @@
 # Logseq Ontology Sync Plugin
 
-A Logseq plugin for managing and synchronizing ontology templates. This plugin enables importing EDN template files, managing ontology structures, and keeping your knowledge graph organized.
+A Logseq plugin for DB graphs (desktop 2.0.x).
 
-## Features
-
-- Import ontology templates from EDN files
-- Export current ontology structure
-- Conflict detection and resolution
-- Preview changes before importing
-- Dry-run mode for safe testing
-- Comprehensive logging and error handling
+> The plugin is being rebuilt as a **role builder**: it will compose role definitions and export EDN for you to import with Logseq's own menu (Import > EDN to DB Graph). The earlier sync, import and API-create machinery has been removed; full documentation will follow once the rebuild lands.
 
 ## Development
 
@@ -78,9 +71,8 @@ logseq-ontology-sync-plugin/
 │   └── workflows/       # GitHub Actions CI/CD
 ├── src/
 │   ├── index.ts         # Plugin entry point
-│   ├── api/             # Logseq API wrappers
 │   ├── parser/          # EDN parsing logic
-│   ├── ui/              # UI components
+│   ├── plugin-controller.ts # Toolbar button, command, main UI
 │   └── utils/           # Utility functions
 ├── tests/               # Test files
 ├── dist/                # Build output (generated)
@@ -157,12 +149,7 @@ GitHub Actions automatically runs on push and pull requests:
 
 ## Usage
 
-Once installed in Logseq:
-
-1. Click the ontology sync icon in the toolbar
-2. Use Command Palette (Cmd/Ctrl+Shift+P):
-   - "Import Ontology Template" - Import from EDN file
-   - "Export Ontology Template" - Export current structure
+Once installed in Logseq, click the toolbar icon or run "Ontology: Open role builder" from the Command Palette. The builder UI is a placeholder until the rebuild lands.
 
 ## Contributing
 

@@ -28,7 +28,7 @@
   },
   "trustedDependencies": ["@logseq/libs"],
   "dependencies": {
-    "@logseq/libs": "^0.0.17",
+    "@logseq/libs": "0.3.4",
     "edn-data": "^1.1.2"
   },
   "devDependencies": {
