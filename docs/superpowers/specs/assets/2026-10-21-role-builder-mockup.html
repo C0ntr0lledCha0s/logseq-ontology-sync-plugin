@@ -1,0 +1,72 @@
+<h2>v3: presets bar · class contents · one scrolling page</h2>
+<p class="subtitle">The left column is a table of contents; the right is one long page with a section per class. Scroll the right and the contents highlights where you are; click a class on the left to jump. Everything carries preset tags; switching something off greys it but keeps its tags.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Role: Client Work · 6 classes · 31 of 58 properties on</div>
+  <div class="mockup-body" style="font-size:13px">
+
+    <div style="margin-bottom:10px;line-height:2">
+      <span class="label">Start from presets</span>&nbsp;
+      <span style="background:#2d6cdf55;padding:2px 8px;border-radius:10px">✓ CRM</span>
+      <span style="background:#d9822b55;padding:2px 8px;border-radius:10px">✓ Events</span>
+      <span style="padding:2px 8px;border:1px dashed #888;border-radius:10px;opacity:.6">Research</span>
+      <span style="padding:2px 8px;border:1px dashed #888;border-radius:10px;opacity:.6">Content</span>
+      <span style="padding:2px 8px;border:1px dashed #888;border-radius:10px;opacity:.6">Student Life</span>
+      &nbsp;<input class="mock-input" placeholder="+ add class…" style="width:150px">
+    </div>
+
+    <div style="display:flex;gap:12px">
+      <!-- Table of contents -->
+      <div class="mock-sidebar" style="min-width:190px;line-height:1.9;position:sticky;top:0">
+        <span class="label">Contents</span><br>
+        Thing <span style="opacity:.55;font-size:11px">parent</span><br>
+        <strong>▸ Person</strong> <span style="font-size:11px">9/24</span><br>
+        &nbsp;&nbsp;Organization <span style="font-size:11px">8/19</span><br>
+        &nbsp;&nbsp;Place <span style="font-size:11px">4/12</span><br>
+        &nbsp;&nbsp;Event <span style="font-size:11px">6/15</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;BusinessMeeting <span style="font-size:11px">4/4</span><br>
+        <span style="opacity:.45">&nbsp;&nbsp;<s>Place</s>… switched off classes stay listed</span>
+      </div>
+
+      <!-- Scrolling body -->
+      <div class="mock-content" style="flex:1;line-height:1.9;max-height:330px;overflow:auto;border-left:1px solid #8883;padding-left:12px">
+
+        <div style="opacity:.6;margin-bottom:6px">…end of <strong>Thing</strong>: name, url, description</div>
+
+        <div style="border-top:2px solid #2d6cdf;padding-top:4px">
+          <strong style="font-size:15px">☑ Person</strong>
+          <span style="background:#2d6cdf55;padding:0 6px;border-radius:8px;font-size:11px">CRM</span>
+          <span style="background:#d9822b55;padding:0 6px;border-radius:8px;font-size:11px">Events</span>
+          <span style="opacity:.6;font-size:11px">· extends Thing</span>
+          <table style="width:100%;font-size:12.5px;margin-top:4px">
+            <tr><td>☑ email</td><td><span style="background:#2d6cdf55;padding:0 5px;border-radius:8px">CRM</span> <span style="background:#d9822b55;padding:0 5px;border-radius:8px">Events</span></td><td style="opacity:.6">text</td></tr>
+            <tr><td>☑ jobTitle</td><td><span style="background:#2d6cdf55;padding:0 5px;border-radius:8px">CRM</span></td><td style="opacity:.6">text</td></tr>
+            <tr><td>☑ worksFor</td><td><span style="background:#2d6cdf55;padding:0 5px;border-radius:8px">CRM</span></td><td style="opacity:.6">→ Organization</td></tr>
+            <tr><td>☑ performerIn</td><td><span style="background:#d9822b55;padding:0 5px;border-radius:8px">Events</span></td><td style="opacity:.6">→ Event</td></tr>
+            <tr style="opacity:.4"><td>☐ telephone</td><td><span style="background:#2d6cdf55;padding:0 5px;border-radius:8px">CRM</span> <span style="background:#d9822b55;padding:0 5px;border-radius:8px">Events</span></td><td>text · <em>switched off by you</em></td></tr>
+            <tr><td>☑ knowsAbout</td><td><span style="border:1px solid #888;padding:0 5px;border-radius:8px">added by you</span></td><td style="opacity:.6">text</td></tr>
+            <tr style="opacity:.4"><td>☐ spouse</td><td style="font-size:11px">not in a selected preset</td><td>→ Person</td></tr>
+            <tr style="opacity:.4"><td>☐ birthDate</td><td style="font-size:11px">not in a selected preset</td><td>date</td></tr>
+          </table>
+        </div>
+
+        <div style="border-top:2px solid #2d6cdf;padding-top:4px;margin-top:10px">
+          <strong style="font-size:15px">☑ Organization</strong>
+          <span style="background:#2d6cdf55;padding:0 6px;border-radius:8px;font-size:11px">CRM</span>
+          <span style="background:#d9822b55;padding:0 6px;border-radius:8px;font-size:11px">Events</span>
+          <table style="width:100%;font-size:12.5px;margin-top:4px">
+            <tr><td>☑ legalName</td><td><span style="background:#2d6cdf55;padding:0 5px;border-radius:8px">CRM</span></td><td style="opacity:.6">text</td></tr>
+            <tr><td>☑ employee</td><td><span style="background:#2d6cdf55;padding:0 5px;border-radius:8px">CRM</span></td><td style="opacity:.6">→ Person</td></tr>
+            <tr><td>☑ event</td><td><span style="background:#d9822b55;padding:0 5px;border-radius:8px">Events</span></td><td style="opacity:.6">→ Event</td></tr>
+            <tr><td colspan="3" style="opacity:.6">…</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:10px;text-align:right">
+      <button class="mock-button">Save role</button>
+      <button class="mock-button">Export EDN ⬇</button>
+    </div>
+  </div>
+</div>
