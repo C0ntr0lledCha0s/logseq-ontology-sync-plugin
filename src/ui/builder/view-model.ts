@@ -76,7 +76,7 @@ export function toViewModel(
     if (def.type === 'node' && def.targetClasses.length > 0) {
       return `→ ${def.targetClasses.map(classTitle).join(', ')}`
     }
-    return def.type
+    return def.type === 'default' ? 'text' : def.type
   }
 
   const contents: BuilderVM['contents'] = []

@@ -58,6 +58,8 @@ export class BuilderController {
     file: string
     text: string
   } | null = null
+  private pendingImport: RoleDefinition | null = null
+  private busy = false
   private afterDiscard: (() => Promise<void> | void) | null = null
 
   private observer: IntersectionObserver | null = null
@@ -76,7 +78,6 @@ export class BuilderController {
     this.root.innerHTML = renderLoading()
     this.error = null
     this.hint = null
-    this.confirm = null
     try {
       const loaded = await loadLibrary(this.deps.source)
       this.setLibrary(loaded.library, loaded.presets, loaded.latestTag)
@@ -91,8 +92,8 @@ export class BuilderController {
     } catch (e) {
       this.error = errorText(e)
     }
-    this.role = this.firstRole()
-    this.dirty = false
+    // Keep an open role and its unsaved edits across close and reopen.
+    this.role ??= this.firstRole()
     this.render()
     void checkForUpdate(this.libraryTag, this.deps.source).then((tag) => {
       this.updateTag = tag
@@ -210,7 +211,10 @@ export class BuilderController {
       if (el) this.run(this.onAction(el.dataset.enter ?? '', el))
     })
     document.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Escape') this.deps.close()
+      if (ev.key !== 'Escape') return
+      const target = ev.target as HTMLElement | null
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+      this.deps.close()
     })
   }
 
@@ -242,13 +246,13 @@ export class BuilderController {
         this.addClass()
         return
       case 'save':
-        await this.saveRole()
+        await this.exclusive(() => this.saveRole())
         return
       case 'export':
-        await this.startExport()
+        await this.exclusive(() => this.startExport())
         return
       case 'export-continue':
-        await this.finishExport()
+        await this.exclusive(() => this.finishExport())
         return
       case 'export-role':
         this.exportRoleFile()
@@ -265,8 +269,15 @@ export class BuilderController {
         return
       case 'confirm-cancel':
         this.clearConfirm()
+        this.exportNotes = []
         this.render()
         return
+      case 'import-replace': {
+        const definition = this.pendingImport
+        this.clearConfirm()
+        if (definition) await this.saveImported(definition)
+        return
+      }
       case 'discard-continue': {
         const next = this.afterDiscard
         this.clearConfirm()
@@ -317,6 +328,7 @@ export class BuilderController {
   private clearConfirm(): void {
     this.confirm = null
     this.pendingExport = null
+    this.pendingImport = null
     this.afterDiscard = null
   }
 
@@ -336,6 +348,7 @@ export class BuilderController {
     this.role = found ? structuredClone(found) : null
     this.dirty = false
     this.creatingRole = false
+    this.clearConfirm()
     this.exportNotes = []
     this.hint = null
     this.error = null
@@ -400,6 +413,8 @@ export class BuilderController {
     this.setLibrary(fresh.library, fresh.presets, fresh.latestTag)
     this.libraryError = null
     this.error = null
+    this.clearConfirm()
+    this.exportNotes = []
     if (this.roles.length === 0 && this.role === null) {
       try {
         await this.reloadRoles()
@@ -457,11 +472,40 @@ export class BuilderController {
     if (!file) return
     const definition = roleFromFile(await file.text())
     await this.guardDirty(async () => {
-      await this.store.save(definition)
-      await this.reloadRoles()
-      this.openRole(definition.name)
-      await this.deps.showMsg(`Imported role "${definition.name}"`, 'success')
+      if (this.roles.some((r) => r.name === definition.name)) {
+        this.pendingImport = definition
+        this.confirm = {
+          title: `A role named "${definition.name}" already exists — replace it?`,
+          lines: ["Replacing keeps this graph's export history for that role."],
+          actions: [{ action: 'import-replace', label: 'Replace' }, CANCEL],
+        }
+        this.render()
+        return
+      }
+      await this.saveImported(definition)
     })
+  }
+
+  private async saveImported(definition: RoleDefinition): Promise<void> {
+    const existing = this.roles.find((r) => r.name === definition.name)
+    const stored: StoredRole = existing?.lastExport
+      ? { ...definition, lastExport: existing.lastExport }
+      : definition
+    await this.store.save(stored)
+    await this.reloadRoles()
+    this.openRole(definition.name)
+    await this.deps.showMsg(`Imported role "${definition.name}"`, 'success')
+  }
+
+  /** Ignores a second activation while an async action is still running. */
+  private async exclusive(task: () => Promise<void>): Promise<void> {
+    if (this.busy) return
+    this.busy = true
+    try {
+      await task()
+    } finally {
+      this.busy = false
+    }
   }
 
   // ---- EDN export ------------------------------------------------------------------------
@@ -522,10 +566,10 @@ export class BuilderController {
 
   private async finishExport(): Promise<void> {
     const pending = this.pendingExport
-    if (!pending || !this.role) throw new Error('Nothing to export')
+    if (!pending) throw new Error('Nothing to export')
     downloadText(pending.file, pending.text)
     this.role = {
-      ...this.role,
+      ...pending.role,
       libraryVersion: this.requireLibrary().version,
       lastExport: { ...pending.snapshot, exportedAt: new Date().toISOString() },
     }

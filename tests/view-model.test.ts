@@ -89,7 +89,7 @@ describe('view model', () => {
   test('node-type-label', () => {
     const vm = vmFor(role({ presets: ['crm'] }))
     expect(row(vm, Person, 'schema.property/worksFor').typeLabel).toBe('→ Organization')
-    expect(row(vm, Person, 'schema.property/email').typeLabel).toBe('default')
+    expect(row(vm, Person, 'schema.property/email').typeLabel).toBe('text')
     const ev = vmFor(role({ presets: ['events'] }))
     expect(row(ev, 'schema.class/Event', 'schema.property/organizer').typeLabel).toBe(
       '→ Person, Organization'
