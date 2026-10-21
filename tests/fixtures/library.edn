@@ -1,0 +1,23 @@
+{:logseq.db.sqlite.export/export-type :graph-ontology
+ :schema-library/version "2.0.0"
+ :properties
+ {:schema.property/url {:block/title "url" :logseq.property/type :url :db/cardinality :db.cardinality/one}
+  :schema.property/name {:block/title "name" :logseq.property/type :default :db/cardinality :db.cardinality/one}
+  :schema.property/email {:block/title "email" :logseq.property/type :default :db/cardinality :db.cardinality/many}
+  :schema.property/spouse {:block/title "spouse" :logseq.property/type :node :db/cardinality :db.cardinality/one
+                           :build/property-classes [:schema.class/Person]}
+  :schema.property/worksFor {:block/title "worksFor" :logseq.property/type :node :db/cardinality :db.cardinality/one
+                             :build/property-classes [:schema.class/Organization]}
+  :schema.property/legalName {:block/title "legalName" :logseq.property/type :default :db/cardinality :db.cardinality/one}
+  :schema.property/organizer {:block/title "organizer" :logseq.property/type :node :db/cardinality :db.cardinality/many
+                              :build/property-classes [:schema.class/Person :schema.class/Organization]}
+  :custom.property/areas {:block/title "areas" :logseq.property/type :default :db/cardinality :db.cardinality/many}}
+ :classes
+ {:schema.class/Thing {:block/title "Thing" :build/class-properties [:schema.property/url :schema.property/name]}
+  :schema.class/Person {:block/title "Person" :build/class-extends [:schema.class/Thing]
+                        :build/class-properties [:schema.property/email :schema.property/spouse :schema.property/worksFor]}
+  :schema.class/Organization {:block/title "Organization" :build/class-extends [:schema.class/Thing]
+                              :build/class-properties [:schema.property/legalName :schema.property/email :custom.property/areas]}
+  :schema.class/Event {:block/title "Event" :build/class-extends [:schema.class/Thing]
+                       :build/class-properties [:schema.property/organizer]}
+  :schema.class/BusinessMeeting {:block/title "BusinessMeeting" :build/class-extends [:schema.class/Event]}}}
