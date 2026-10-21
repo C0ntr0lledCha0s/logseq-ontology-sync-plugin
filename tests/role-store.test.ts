@@ -54,7 +54,10 @@ describe('RoleStore', () => {
     await s.save(role('A'))
     await s.save(role('B'))
     expect(f.calls.createPage).toEqual([['Ontology Roles', {}, { redirect: false }]])
-    expect(f.calls.upsert).toEqual([['page-uuid', ':logseq.property/hide?', true]])
+    expect(f.calls.upsert).toEqual([
+      ['page-uuid', ':logseq.property/hide?', true],
+      ['page-uuid', ':logseq.property/hide?', true],
+    ])
     expect((await s.load()).map((r) => r.name)).toEqual(['A', 'B'])
   })
 
@@ -89,13 +92,52 @@ describe('RoleStore', () => {
     const s = new RoleStore(f.api)
     await s.save(role('A'))
     f.blocks().push({ uuid: 'bad-uuid', content: 'not json' })
-    expect(s.load()).rejects.toThrow('bad-uuid')
+    await expect(s.load()).rejects.toThrow('bad-uuid')
   })
 
   test('store-hide-failure-throws', async () => {
     const f = fake({ hideFails: true })
-    expect(new RoleStore(f.api).save(role('A'))).rejects.toThrow(
+    await expect(new RoleStore(f.api).save(role('A'))).rejects.toThrow(
       'Could not hide the Ontology Roles page: nope'
     )
+  })
+
+  test('hide-reapplied-when-page-exists-and-failure-throws', async () => {
+    const f = fake()
+    const s = new RoleStore(f.api)
+    await s.save(role('A'))
+    f.calls.upsert.length = 0
+    await s.save(role('B'))
+    expect(f.calls.createPage).toHaveLength(1)
+    expect(f.calls.upsert).toEqual([['page-uuid', ':logseq.property/hide?', true]])
+    const g = fake()
+    await new RoleStore(g.api).save(role('A'))
+    ;(g.api.Editor as { upsertBlockProperty: unknown }).upsertBlockProperty = () =>
+      Promise.reject(new Error('later'))
+    await expect(new RoleStore(g.api).save(role('B'))).rejects.toThrow(
+      'Could not hide the Ontology Roles page: later'
+    )
+  })
+
+  test('load-validates-each-block', async () => {
+    const f = fake()
+    const s = new RoleStore(f.api)
+    await s.save(role('A'))
+    f.blocks().push({ uuid: 'shape-uuid', content: JSON.stringify({ name: 'x' }) })
+    await expect(s.load()).rejects.toThrow('shape-uuid')
+    f.blocks().pop()
+    f.blocks().push({ uuid: 'name-uuid', content: JSON.stringify(role('a#b')) })
+    await expect(s.load()).rejects.toThrow('name-uuid')
+  })
+
+  test('load-keeps-last-export', async () => {
+    const f = fake()
+    const s = new RoleStore(f.api)
+    const withExport = {
+      ...role('A'),
+      lastExport: { properties: {}, classProperties: {}, exportedAt: 'x' },
+    }
+    await s.save(withExport)
+    expect((await s.load())[0]).toEqual(withExport)
   })
 })

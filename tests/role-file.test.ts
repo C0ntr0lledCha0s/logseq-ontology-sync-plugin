@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { roleFromFile, roleToFile } from '../src/role/role-file'
+import { roleFromFile, roleNameError, roleToFile } from '../src/role/role-file'
 import type { StoredRole } from '../src/logseq/role-store'
 
 const role: StoredRole = {
@@ -38,6 +38,24 @@ describe('role files', () => {
     ]
     for (const text of bad) {
       expect(() => roleFromFile(text)).toThrow('Not an ontology role file')
+    }
+  })
+})
+
+describe('role names', () => {
+  test('roleNameError', () => {
+    expect(roleNameError('Analyst')).toBeNull()
+    expect(roleNameError('  ')).not.toBeNull()
+    expect(roleNameError('__new__')).not.toBeNull()
+    for (const bad of ['a#b', 'a[[b', 'a]]b']) expect(roleNameError(bad)).not.toBeNull()
+    expect(roleNameError('a [b] c')).toBeNull()
+  })
+
+  test('roleFromFile-rejects-bad-names', () => {
+    const good = JSON.parse(roleToFile(role))
+    for (const name of ['', '__new__', 'x#y', '[[x]]']) {
+      const text = JSON.stringify({ ...good, role: { ...good.role, name } })
+      expect(() => roleFromFile(text)).toThrow('Not an ontology role file: ')
     }
   })
 })

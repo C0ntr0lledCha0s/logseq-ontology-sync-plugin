@@ -1,5 +1,6 @@
 import type { RoleDefinition } from '../role/types'
 import type { ExportSnapshot } from '../role/export'
+import { parseRoleDefinition } from '../role/role-file'
 import type { LogseqLike } from './types'
 
 export const ROLES_PAGE = 'Ontology Roles'
@@ -38,9 +39,9 @@ export class RoleStore {
 
   private async ensurePage(): Promise<{ uuid: string }> {
     const found = await this.api.Editor.getPage(ROLES_PAGE)
-    if (found) return found
-    const page = await this.api.Editor.createPage(ROLES_PAGE, {}, { redirect: false })
+    const page = found ?? (await this.api.Editor.createPage(ROLES_PAGE, {}, { redirect: false }))
     if (!page) throw new Error(`Could not create the ${ROLES_PAGE} page`)
+    // The hidden state cannot be read back reliably, so re-apply it on every save (idempotent).
     try {
       await this.api.Editor.upsertBlockProperty(page.uuid, ':logseq.property/hide?', true)
     } catch (e) {
@@ -57,9 +58,13 @@ export class RoleStore {
       // createPage leaves an empty first block; it holds no role.
       if (block.content.trim() === '') continue
       try {
-        out.push({ uuid: block.uuid, role: JSON.parse(block.content) as StoredRole })
-      } catch {
-        throw new Error(`Block ${block.uuid} on the ${ROLES_PAGE} page is not valid role JSON`)
+        const parsed = JSON.parse(block.content) as { lastExport?: StoredRole['lastExport'] }
+        const role: StoredRole = parseRoleDefinition(parsed)
+        if (parsed.lastExport !== undefined) role.lastExport = parsed.lastExport
+        out.push({ uuid: block.uuid, role })
+      } catch (e) {
+        const why = e instanceof Error ? e.message : String(e)
+        throw new Error(`Block ${block.uuid} on the ${ROLES_PAGE} page is not a valid role: ${why}`)
       }
     }
     return out

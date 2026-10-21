@@ -26,17 +26,18 @@ function isOverrideMap(v: unknown): v is Record<string, 'on' | 'off'> {
   return isRecord(v) && Object.values(v).every((x) => x === 'on' || x === 'off')
 }
 
-export function roleFromFile(text: string): RoleDefinition {
-  let data: unknown
-  try {
-    data = JSON.parse(text)
-  } catch {
-    throw new Error(NOT_A_ROLE)
+/** Why `name` cannot be a role name, or null when it is fine. */
+export function roleNameError(name: string): string | null {
+  if (name.trim() === '') return 'Enter a name for the role'
+  if (name === '__new__') return 'The role name "__new__" is reserved'
+  if (name.includes('#') || name.includes('[[') || name.includes(']]')) {
+    return 'A role name cannot contain "#", "[[" or "]]"'
   }
-  if (!isRecord(data) || data.format !== FORMAT || data.version !== VERSION) {
-    throw new Error(NOT_A_ROLE)
-  }
-  const r = data.role
+  return null
+}
+
+/** Validates the shape and name of a role definition; throws with a specific message. */
+export function parseRoleDefinition(r: unknown): RoleDefinition {
   if (
     !isRecord(r) ||
     typeof r.name !== 'string' ||
@@ -48,6 +49,8 @@ export function roleFromFile(text: string): RoleDefinition {
   ) {
     throw new Error(NOT_A_ROLE)
   }
+  const nameError = roleNameError(r.name)
+  if (nameError) throw new Error(`${NOT_A_ROLE}: ${nameError}`)
   return {
     name: r.name,
     libraryVersion: r.libraryVersion,
@@ -55,4 +58,17 @@ export function roleFromFile(text: string): RoleDefinition {
     classOverrides: r.classOverrides,
     propertyOverrides: r.propertyOverrides,
   }
+}
+
+export function roleFromFile(text: string): RoleDefinition {
+  let data: unknown
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw new Error(NOT_A_ROLE)
+  }
+  if (!isRecord(data) || data.format !== FORMAT || data.version !== VERSION) {
+    throw new Error(NOT_A_ROLE)
+  }
+  return parseRoleDefinition(data.role)
 }
