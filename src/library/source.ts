@@ -4,8 +4,9 @@ import type { Library, Preset } from './types'
 
 const RELEASE_URL =
   'https://api.github.com/repos/C0ntr0lledCha0s/logseq-template-graph/releases/latest'
-const LIBRARY_ASSET = 'schema-library.edn'
-const PRESETS_ASSET = 'schema-presets.edn'
+// GitHub release assets send no CORS headers, so the files are read from the tagged source tree.
+const RAW_BASE = 'https://raw.githubusercontent.com/C0ntr0lledCha0s/logseq-template-graph'
+const rawUrl = (tag: string, file: string): string => `${RAW_BASE}/${tag}/library/${file}`
 const KEY_LIBRARY = 'library.edn'
 const KEY_PRESETS = 'presets.edn'
 const KEY_TAG = 'tag'
@@ -13,7 +14,9 @@ const KEY_TAG = 'tag'
 export interface SourceDeps {
   fetch: typeof fetch
   storage: {
-    getItem(key: string): Promise<string | undefined>
+    /** Logseq's FileStorage.getItem throws for a missing key, so callers check hasItem first. */
+    hasItem(key: string): Promise<boolean>
+    getItem(key: string): Promise<string>
     setItem(key: string, value: string): Promise<void>
   }
 }
@@ -27,7 +30,6 @@ export interface LoadedLibrary {
 
 interface Release {
   tag_name: string
-  assets: { name: string; browser_download_url: string }[]
 }
 
 async function getOk(deps: SourceDeps, url: string): Promise<Response> {
@@ -38,12 +40,6 @@ async function getOk(deps: SourceDeps, url: string): Promise<Response> {
 
 async function latestRelease(deps: SourceDeps): Promise<Release> {
   return (await (await getOk(deps, RELEASE_URL)).json()) as Release
-}
-
-async function downloadAsset(deps: SourceDeps, release: Release, name: string): Promise<string> {
-  const asset = release.assets.find((a) => a.name === name)
-  if (!asset) throw new Error(`Release ${release.tag_name} has no asset ${name}`)
-  return (await getOk(deps, asset.browser_download_url)).text()
 }
 
 function parsePair(libraryText: string, presetsText: string) {
@@ -62,8 +58,12 @@ export async function refreshLibrary(
   deps: SourceDeps
 ): Promise<{ library: Library; presets: Preset[]; latestTag: string }> {
   const release = await latestRelease(deps)
-  const libraryText = await downloadAsset(deps, release, LIBRARY_ASSET)
-  const presetsText = await downloadAsset(deps, release, PRESETS_ASSET)
+  const libraryText = await (
+    await getOk(deps, rawUrl(release.tag_name, 'schema-library.edn'))
+  ).text()
+  const presetsText = await (
+    await getOk(deps, rawUrl(release.tag_name, 'schema-presets.edn'))
+  ).text()
   const parsed = parsePair(libraryText, presetsText)
   await deps.storage.setItem(KEY_LIBRARY, libraryText)
   await deps.storage.setItem(KEY_PRESETS, presetsText)
@@ -73,10 +73,15 @@ export async function refreshLibrary(
 
 /** Use the cached library when there is one; fetch only when there is none. */
 export async function loadLibrary(deps: SourceDeps): Promise<LoadedLibrary> {
-  const libraryText = await deps.storage.getItem(KEY_LIBRARY)
-  const presetsText = await deps.storage.getItem(KEY_PRESETS)
-  const tag = await deps.storage.getItem(KEY_TAG)
-  if (libraryText !== undefined && presetsText !== undefined && tag !== undefined) {
+  const { storage } = deps
+  const cacheComplete =
+    (await storage.hasItem(KEY_LIBRARY)) &&
+    (await storage.hasItem(KEY_PRESETS)) &&
+    (await storage.hasItem(KEY_TAG))
+  if (cacheComplete) {
+    const libraryText = await storage.getItem(KEY_LIBRARY)
+    const presetsText = await storage.getItem(KEY_PRESETS)
+    const tag = await storage.getItem(KEY_TAG)
     return { ...parsePair(libraryText, presetsText), fromCache: true, latestTag: tag }
   }
   try {
