@@ -94,13 +94,14 @@ function renderTag(tag: TagVM): string {
 
 function renderRow(cls: string, row: RowVM): string {
   const note = row.offByYou ? ' · <em>switched off by you</em>' : ''
+  const link = row.linksToAnyPage ? ' · <em>will link to any page (targets not selected)</em>' : ''
   const middle = row.notInPreset
     ? '<span class="rb-count">not in a selected preset</span>'
     : row.tags.map(renderTag).join(' ')
   return `<tr class="${row.on ? '' : 'rb-row-off'}">
     <td><label><input type="checkbox" data-change="toggle-prop" data-class="${escapeHtml(cls)}" data-prop="${escapeHtml(row.ident)}"${row.on ? ' checked' : ''}> ${escapeHtml(row.title)}</label></td>
     <td>${middle}</td>
-    <td class="rb-muted">${escapeHtml(row.typeLabel)}${note}</td>
+    <td class="rb-muted">${escapeHtml(row.typeLabel)}${note}${link}</td>
   </tr>`
 }
 

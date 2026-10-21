@@ -104,6 +104,54 @@ describe('view model', () => {
     expect(depth('schema.class/BusinessMeeting')).toBe(2)
   })
 
+  test('contents-depth-first-hierarchy-order', () => {
+    const text = read('library.edn').replace(
+      ':schema.class/BusinessMeeting {',
+      ':schema.class/Aardvark {:block/title "Aardvark" :build/class-extends [:schema.class/Person]}\n  :schema.class/BusinessMeeting {'
+    )
+    const lib2 = parseLibrary(text)
+    // Library order is Thing, Person, Organization, Event, Aardvark, BusinessMeeting.
+    const r = role({
+      classOverrides: {
+        'schema.class/Aardvark': 'on',
+        'schema.class/BusinessMeeting': 'on',
+        'schema.class/Organization': 'on',
+      },
+    })
+    const vm = toViewModel(lib2, presets, r, computeSelection(lib2, presets, r))
+    expect(vm.contents.map((c) => c.ident)).toEqual([
+      'schema.class/Thing',
+      'schema.class/Person',
+      'schema.class/Aardvark',
+      'schema.class/Organization',
+      'schema.class/Event',
+      'schema.class/BusinessMeeting',
+    ])
+  })
+
+  test('off-ancestor-is-marked-kept-as-parent', () => {
+    const vm = vmFor(
+      role({
+        classOverrides: { 'schema.class/Event': 'off', 'schema.class/BusinessMeeting': 'on' },
+      })
+    )
+    expect(section(vm, 'schema.class/Event')).toMatchObject({
+      on: false,
+      tags: [{ label: 'kept as parent of BusinessMeeting', kind: 'parent' }],
+    })
+  })
+
+  test('links-to-any-page-shown-before-export', () => {
+    const key = `${Person}|schema.property/worksFor`
+    const alone = vmFor(
+      role({ classOverrides: { [Person]: 'on' }, propertyOverrides: { [key]: 'on' } })
+    )
+    expect(row(alone, Person, 'schema.property/worksFor').linksToAnyPage).toBe(true)
+    const both = vmFor(role({ presets: ['crm'] }))
+    expect(row(both, Person, 'schema.property/worksFor').linksToAnyPage).toBe(false)
+    expect(row(both, Person, 'schema.property/email').linksToAnyPage).toBe(false)
+  })
+
   test('totals', () => {
     const vm = vmFor(role({ presets: ['crm'] }))
     // Thing (parent, 0/2 on) + Person (2/3) + Organization (3/3)

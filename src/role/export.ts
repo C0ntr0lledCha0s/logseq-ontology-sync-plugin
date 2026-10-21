@@ -27,13 +27,19 @@ function builtPropertyKeys(lib: Library, raw: EdnMap): Ident[] {
   return out
 }
 
-function plan(lib: Library, sel: Selection): ExportPlan {
+/** Classes the export contains: every class that is on, plus all of their ancestors. */
+export function exportedClasses(lib: Library, sel: Selection): Set<Ident> {
   const exported = new Set<Ident>()
   for (const cls of sel.classes.values()) {
     if (!cls.on) continue
     exported.add(cls.ident)
     for (const parent of ancestors(lib, cls.ident)) exported.add(parent)
   }
+  return exported
+}
+
+function plan(lib: Library, sel: Selection): ExportPlan {
+  const exported = exportedClasses(lib, sel)
 
   const classes = new Map<Ident, Ident[]>()
   const wanted = new Set<Ident>()

@@ -1,3 +1,5 @@
+import { ancestors } from '../../library/parse'
+import { exportedClasses } from '../../role/export'
 import type { Ident, Library, Preset } from '../../library/types'
 import type { RoleDefinition, Selection, Source } from '../../role/types'
 
@@ -14,6 +16,8 @@ export interface RowVM {
   typeLabel: string
   offByYou: boolean
   notInPreset: boolean
+  /** On, but none of its target classes are exported, so it will link to any page. */
+  linksToAnyPage: boolean
 }
 
 export interface SectionVM {
@@ -55,6 +59,26 @@ function depthOf(lib: Library, cls: Ident, visiting: Set<Ident> = new Set()): nu
   return max + 1
 }
 
+/** Depth-first: each class followed by its children, siblings in library order. */
+function hierarchyOrder(lib: Library, entries: BuilderVM['contents']): BuilderVM['contents'] {
+  const present = new Set(entries.map((e) => e.ident))
+  const hasPresentParent = (e: BuilderVM['contents'][number]): boolean =>
+    (lib.classes.get(e.ident)?.parents ?? []).some((p) => present.has(p))
+  const out: BuilderVM['contents'] = []
+  const seen = new Set<Ident>()
+  const visit = (e: BuilderVM['contents'][number]): void => {
+    if (seen.has(e.ident)) return
+    seen.add(e.ident)
+    out.push(e)
+    for (const child of entries) {
+      if (lib.classes.get(child.ident)?.parents.includes(e.ident)) visit(child)
+    }
+  }
+  for (const e of entries) if (!hasPresentParent(e)) visit(e)
+  for (const e of entries) visit(e) // anything only reachable through a cycle
+  return out
+}
+
 /** Pure projection of the selection into what the builder shows. */
 export function toViewModel(
   lib: Library,
@@ -77,6 +101,21 @@ export function toViewModel(
       return `→ ${def.targetClasses.map(classTitle).join(', ')}`
     }
     return def.type === 'default' ? 'text' : def.type
+  }
+
+  const exported = exportedClasses(lib, sel)
+  const onChildren = (cls: Ident): string[] =>
+    [...sel.classes.values()]
+      .filter((c) => c.on && ancestors(lib, c.ident).includes(cls))
+      .map((c) => classTitle(c.ident))
+  const linksToAnyPage = (prop: Ident): boolean => {
+    const def = lib.properties.get(prop)
+    if (!def) throw new Error(`${prop}: unknown property`)
+    return (
+      def.type === 'node' &&
+      def.targetClasses.length > 0 &&
+      !def.targetClasses.some((c) => exported.has(c))
+    )
   }
 
   const contents: BuilderVM['contents'] = []
@@ -105,7 +144,14 @@ export function toViewModel(
       ident: cls.ident,
       title: def.title,
       on: cls.on,
-      tags: cls.sources.map(tagOf),
+      tags: cls.sources.map((src) =>
+        src.kind === 'parent' && !cls.on
+          ? {
+              label: `kept as parent of ${onChildren(cls.ident).join(', ')}`,
+              kind: 'parent' as const,
+            }
+          : tagOf(src)
+      ),
       rows: cls.properties.map((p) => ({
         ident: p.ident,
         title: lib.properties.get(p.ident)?.title ?? localName(p.ident),
@@ -114,6 +160,7 @@ export function toViewModel(
         typeLabel: typeLabel(p.ident),
         offByYou: !p.on && p.userOverride === 'off' && p.sources.length > 0,
         notInPreset: !p.on && p.sources.length === 0,
+        linksToAnyPage: p.on && linksToAnyPage(p.ident),
       })),
     }
     if (def.parents.length > 0) section.parentTitle = def.parents.map(classTitle).join(', ')
@@ -126,7 +173,7 @@ export function toViewModel(
       name: p.name,
       selected: role.presets.includes(p.id),
     })),
-    contents,
+    contents: hierarchyOrder(lib, contents),
     sections,
     totals,
     notices: sel.missing.length > 0 ? [`Not in the library: ${sel.missing.join(', ')}`] : [],
