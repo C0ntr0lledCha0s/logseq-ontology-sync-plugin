@@ -1,7 +1,7 @@
 # Role Builder: Design
 
 **Date:** 2026-10-21
-**Status:** Approved in brainstorming; awaiting final review
+**Status:** Approved 2026-10-21
 **Repos affected:** `logseq-ontology-sync-plugin` (this repo) and `logseq-template-graph`
 
 ## Intent
@@ -66,7 +66,7 @@ Name collisions: a class and a property that differ only in case can coexist. Up
 Misnamed entries (my call): where a library entry is meant to be a Schema.org term but is spelt wrong, rename it to Schema.org's real name:
 - class `LivestyleModification` → `LifestyleModification`
 - property `Parents` → `parent`
-- property `Event` → `event`
+- property `Event` → `event`. Schema.org has both a class `Event` and a property `event`, and the library keeps both: `:schema.class/Event` and `:schema.property/event`. Only the property's name changes.
 
 The `Rating` property has no Schema.org property spelt that way. Treat it as a custom item (see 1.1a).
 
