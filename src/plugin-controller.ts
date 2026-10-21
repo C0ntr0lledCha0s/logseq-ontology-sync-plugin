@@ -9,10 +9,13 @@ import { logger } from './utils/logger'
 import { RoleStore } from './logseq/role-store'
 import { readLivePropertySchemas } from './logseq/live-graph'
 import type { LogseqLike } from './logseq/types'
+import { BuilderController } from './ui/builder/controller'
 
 const PLUGIN_ID = 'logseq-ontology-sync'
 
 export class PluginController {
+  private builder: BuilderController | null = null
+
   /** Register the toolbar button and command palette command. */
   initializeUI(): void {
     logseq.provideModel({
@@ -40,7 +43,7 @@ export class PluginController {
   }
 
   /** Show the role builder main UI. */
-  openBuilder(): Promise<void> {
+  async openBuilder(): Promise<void> {
     logseq.setMainUIInlineStyle({
       position: 'fixed',
       zIndex: 11,
@@ -51,16 +54,19 @@ export class PluginController {
       background: 'rgba(0,0,0,0.4)',
     })
     const root = document.getElementById('app') ?? document.body
-    root.innerHTML = `
-      <div style="background:var(--ls-primary-background-color,#fff);color:var(--ls-primary-text-color,#000);padding:24px;border-radius:8px;min-width:320px">
-        <p>Role builder loading…</p>
-        <button id="role-builder-close" type="button">Close</button>
-      </div>`
-    document.getElementById('role-builder-close')?.addEventListener('click', () => {
-      logseq.hideMainUI()
+    this.builder ??= new BuilderController(root, {
+      api: logseq as unknown as LogseqLike,
+      source: {
+        fetch: window.fetch.bind(window),
+        storage: logseq.FileStorage,
+      },
+      showMsg: async (message, kind) => {
+        await logseq.UI.showMsg(message, kind)
+      },
+      close: () => logseq.hideMainUI(),
     })
     logseq.showMainUI()
-    return Promise.resolve()
+    await this.builder.open()
   }
 }
 
