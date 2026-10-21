@@ -18,6 +18,6 @@
                         :build/class-properties [:schema.property/email :schema.property/spouse :schema.property/worksFor]}
   :schema.class/Organization {:block/title "Organization" :build/class-extends [:schema.class/Thing]
                               :build/class-properties [:schema.property/legalName :schema.property/email :custom.property/areas]}
-  :schema.class/Event {:block/title "Event" :build/class-extends [:schema.class/Thing]
+  :schema.class/Event {:block/title "Event" :build/properties {:schema.property/url "https://schema.org/Event"} :build/class-extends [:schema.class/Thing]
                        :build/class-properties [:schema.property/organizer]}
   :schema.class/BusinessMeeting {:block/title "BusinessMeeting" :build/class-extends [:schema.class/Event]}}}
