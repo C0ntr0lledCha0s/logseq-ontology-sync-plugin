@@ -1,6 +1,6 @@
 {
   "name": "logseq-ontology-sync-plugin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A Logseq plugin for managing and synchronizing ontology templates",
   "author": "C0ntr0lledCha0s",
   "license": "MIT",

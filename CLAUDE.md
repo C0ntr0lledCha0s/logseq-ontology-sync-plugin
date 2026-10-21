@@ -2,11 +2,11 @@
 
 ## Project Overview
 
-**logseq-ontology-sync-plugin** is a Logseq plugin for DB graphs (desktop 2.0.x only; file-based graphs are not supported).
+**logseq-ontology-sync-plugin** (v0.2.0) is a **role builder** plugin for Logseq DB graphs (desktop 2.0.x only; file-based graphs are not supported). It loads the Schema.org library and presets from the latest `C0ntr0lledCha0s/logseq-template-graph` GitHub release (assets `schema-library.edn` + `schema-presets.edn`, v2.0.0+; cached, "Update library" is explicit), lets the user tick presets (union), trim classes and properties per class, saves roles on a hidden "Ontology Roles" page, imports/exports role files (JSON, format `ontology-role` v1), and exports a trimmed `:graph-ontology` EDN to Downloads. The user imports that file with Logseq's own **Import -> EDN to DB Graph**. The plugin never creates entities through the API.
 
-> **Rebuild in progress:** the plugin is being rebuilt as a **role builder**. It will compose role definitions and export EDN that the user imports with Logseq's own menu (Import > EDN to DB Graph). All earlier sync, import and API-create code has been removed. Task 9 of the rebuild plan writes the full docs; until then the current source and `docs/superpowers/**` are authoritative.
+Idents: `:schema.class/*`, `:schema.property/*`, `:custom.*`.
 
-Background research: `docs/plugin/native-edn-import-research.md` (why plugins export EDN instead of creating entities via the API), `docs/api-field-reconciliation.md` (historical).
+Background: `docs/plugin/native-edn-import-research.md` (why EDN export instead of API creation), `docs/api-field-reconciliation.md` (historical), design and plan in `docs/superpowers/`.
 
 ## Technology Stack
 
@@ -14,22 +14,23 @@ Background research: `docs/plugin/native-edn-import-research.md` (why plugins ex
 - Tests: Bun's built-in runner; lint: ESLint + Prettier
 - Plugin SDK: `@logseq/libs` pinned exactly to `0.3.4` (npm `next` tag)
 
-## Project Structure
+## Architecture
 
-```
-src/
-├── index.ts              # Entry point: init guard, DataCloneError suppression, settings, controller
-├── plugin-controller.ts  # Toolbar button, "Ontology: Open role builder" command, openBuilder()
-├── settings.ts           # Settings schema (currently empty)
-├── parser/               # EDN parsing (to be replaced)
-└── utils/logger.ts       # Structured logging
-tests/                    # logger.test.ts, parser.test.ts
-```
+Data flow: library source -> parse -> selection -> view model/render -> export/conflicts -> download. Roles persist on the hidden page.
+
+- `src/edn/` - EDN reader, writer and value helpers (keywords, sets, maps) used for the library files and the export.
+- `src/library/` - `source.ts` fetches the latest release assets and caches them (explicit refresh only, update check separate); `parse.ts` turns the EDN into a typed `Library` (classes, properties, presets); `types.ts` holds the types.
+- `src/role/` - `types.ts` (RoleDefinition, Selection); `selection.ts` computes the union of ticked presets plus user overrides; `export.ts` builds the trimmed `:graph-ontology` EDN and file name; `conflicts.ts` compares property type/cardinality with the live graph and blocks export on clashes; `role-file.ts` reads/writes the `ontology-role` v1 JSON.
+- `src/logseq/` - Logseq-facing adapters: `role-store.ts` (roles on the hidden "Ontology Roles" page), `live-graph.ts` (reads live property schemas), `download.ts` (file download), `types.ts`.
+- `src/ui/builder/` - `view-model.ts` (pure state -> view model, source tags), `overrides.ts` (user add/remove edits), `render.ts` (HTML string), `controller.ts` (events, wiring, export flow).
+- `src/index.ts` entry, `src/plugin-controller.ts` toolbar button + "Ontology: Open role builder" command, `src/settings.ts`, `src/utils/logger.ts`.
+
+Re-import is additive: Logseq never removes things on re-import, so removals are done by hand; the UI warns before export.
 
 ## Common Commands
 
 ```bash
-bun run dev | build | typecheck | lint | test
+bun run dev | build | test | typecheck | lint | deploy
 ```
 
 Do not run `bun run deploy` (copies to a Windows folder).
