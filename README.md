@@ -12,7 +12,7 @@ The plugin never creates classes or properties through the plugin API. Logseq do
 
 Click the toolbar icon or run **Ontology: Open role builder** from the Command Palette.
 
-1. **Library.** On first use the plugin downloads `schema-library.edn` and `schema-presets.edn` from the latest release of `C0ntr0lledCha0s/logseq-template-graph` (v2.0.0 or later) and caches them. It does not refetch on its own. Use **Update library** when you want the newest release.
+1. **Library.** On first use the plugin resolves the latest release tag of `C0ntr0lledCha0s/logseq-template-graph` (v2.0.0 or later) and downloads `library/schema-library.edn` and `library/schema-presets.edn` from that tag and caches them. It does not refetch on its own. Use **Update library** when you want the newest release.
 2. **Pick presets.** Tick one or more presets. The selection is the union of all ticked presets.
 3. **Trim.** Remove classes, and remove properties per class. Tags show where each item came from (which preset, or added by you).
 4. **Save the role.** Roles are stored on a hidden page named "Ontology Roles" in your graph.
@@ -28,7 +28,7 @@ Before exporting, the plugin compares the role's properties with the live graph.
 
 ### Limitations
 
-- **Re-import is additive.** Importing again never removes anything. If you trim a role after importing it, the removed classes and properties stay in the graph until you delete them by hand in Logseq. The plugin warns you about this before export.
+- **Re-import is additive.** Importing again never removes anything. If you trim a role after importing it, the removed classes and properties stay in the graph until you delete them by hand in Logseq. The plugin shows this warning when you export after switching off items that were previously exported.
 - DB graphs only, desktop Logseq 2.0.x.
 - The library comes from a GitHub release, so the first load needs network access.
 
@@ -198,7 +198,6 @@ MIT License - see LICENSE file for details
 ## Related Issues
 
 - [Issue #7](https://github.com/C0ntr0lledCha0s/logseq-template-graph/issues/7) - Plugin Scaffolding
-- [Issue #5](https://github.com/C0ntr0lledCha0s/logseq-template-graph/issues/5) - EDN Parser Requirements
 
 ## Support
 

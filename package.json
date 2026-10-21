@@ -1,14 +1,14 @@
 {
   "name": "logseq-ontology-sync-plugin",
   "version": "0.2.0",
-  "description": "A Logseq plugin for managing and synchronizing ontology templates",
+  "description": "Logseq role builder: compose Schema.org roles from presets, trim them, and export a graph-ontology EDN for import",
   "author": "C0ntr0lledCha0s",
   "license": "MIT",
   "type": "module",
   "main": "index.html",
   "logseq": {
     "id": "logseq-ontology-sync",
-    "title": "Ontology Sync",
+    "title": "Ontology Role Builder",
     "icon": "./icon.svg"
   },
   "scripts": {
