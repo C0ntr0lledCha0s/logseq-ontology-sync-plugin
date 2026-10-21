@@ -33,6 +33,10 @@ export class PluginController {
       () => void this.openBuilder()
     )
 
+    logseq.App.onCurrentGraphChanged(() => {
+      this.builder?.onGraphChanged().catch((e: unknown) => logger.error('Graph change failed', e))
+    })
+
     // TEMPORARY: remove after in-Logseq verification (Task 6 Step 5)
     logseq.App.registerCommandPalette(
       { key: 'ontology-self-test', label: 'Ontology: self-test' },
@@ -64,6 +68,11 @@ export class PluginController {
         await logseq.UI.showMsg(message, kind)
       },
       close: () => logseq.hideMainUI(),
+      currentGraph: async () => {
+        const graph = await logseq.App.getCurrentGraph()
+        if (!graph) throw new Error('No graph is open')
+        return graph.path
+      },
     })
     logseq.showMainUI()
     await this.builder.open()

@@ -7,7 +7,7 @@ import { RoleStore, type StoredRole } from '../../logseq/role-store'
 import type { LogseqLike } from '../../logseq/types'
 import { removals, typeConflicts } from '../../role/conflicts'
 import { buildExport, exportFileName, snapshotOf } from '../../role/export'
-import { roleFromFile, roleToFile } from '../../role/role-file'
+import { roleFromFile, roleNameError, roleToFile } from '../../role/role-file'
 import { computeSelection } from '../../role/selection'
 import type { RoleDefinition } from '../../role/types'
 import { setClass, setProperty, togglePreset } from './overrides'
@@ -26,6 +26,8 @@ export interface BuilderDeps {
   source: SourceDeps
   showMsg: (message: string, kind?: 'success' | 'warning' | 'error') => Promise<void> | void
   close: () => void
+  /** Identifies the graph currently open in Logseq (its path). */
+  currentGraph: () => Promise<string>
 }
 
 const CANCEL = { action: 'confirm-cancel', label: 'Cancel' }
@@ -60,6 +62,7 @@ export class BuilderController {
   } | null = null
   private pendingImport: RoleDefinition | null = null
   private busy = false
+  private graphId: string | null = null
   private afterDiscard: (() => Promise<void> | void) | null = null
 
   private observer: IntersectionObserver | null = null
@@ -78,6 +81,7 @@ export class BuilderController {
     this.root.innerHTML = renderLoading()
     this.error = null
     this.hint = null
+    const switched = await this.syncGraph()
     try {
       const loaded = await loadLibrary(this.deps.source)
       this.setLibrary(loaded.library, loaded.presets, loaded.latestTag)
@@ -92,13 +96,58 @@ export class BuilderController {
     } catch (e) {
       this.error = errorText(e)
     }
-    // Keep an open role and its unsaved edits across close and reopen.
-    this.role ??= this.firstRole()
+    if (switched) {
+      this.role = this.firstRole()
+    } else if (this.role && !this.dirty) {
+      // Re-take the stored copy so lastExport is fresh.
+      const name = this.role.name
+      const stored = this.roles.find((r) => r.name === name)
+      this.role = stored ? structuredClone(stored) : this.firstRole()
+    } else {
+      // Keep an open role and its unsaved edits across close and reopen.
+      this.role ??= this.firstRole()
+    }
     this.render()
     void checkForUpdate(this.libraryTag, this.deps.source).then((tag) => {
       this.updateTag = tag
       if (tag && this.library) this.render()
     })
+  }
+
+  /** Called when Logseq switches graphs: drops the previous graph's role state. */
+  async onGraphChanged(): Promise<void> {
+    if (!(await this.syncGraph())) return
+    try {
+      await this.reloadRoles()
+    } catch (e) {
+      this.error = errorText(e)
+    }
+    this.role = this.firstRole()
+    if (this.library !== null) this.render()
+  }
+
+  /** Records the current graph; true (after resetting role state) when it differs from the last. */
+  private async syncGraph(): Promise<boolean> {
+    const current = await this.deps.currentGraph()
+    const changed = this.graphId !== null && this.graphId !== current
+    this.graphId = current
+    if (!changed) return false
+    const lostEdits = this.dirty
+    this.role = null
+    this.roles = []
+    this.dirty = false
+    this.creatingRole = false
+    this.clearConfirm()
+    this.exportNotes = []
+    this.hint = null
+    this.error = null
+    if (lostEdits) {
+      await this.deps.showMsg(
+        'Unsaved changes to a role in the previous graph were discarded.',
+        'warning'
+      )
+    }
+    return true
   }
 
   private setLibrary(library: Library, presets: Preset[], tag: string): void {
@@ -442,7 +491,8 @@ export class BuilderController {
   private async createRole(): Promise<void> {
     const library = this.requireLibrary()
     const name = (this.root.querySelector<HTMLInputElement>('#rb-new-role')?.value ?? '').trim()
-    if (name === '') throw new Error('Enter a name for the new role')
+    const nameError = roleNameError(name)
+    if (nameError) throw new Error(nameError)
     if (this.roles.some((r) => r.name === name)) throw new Error(`A role named "${name}" exists`)
     await this.guardDirty(async () => {
       const fresh: StoredRole = {
