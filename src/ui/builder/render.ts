@@ -54,7 +54,7 @@ export function builderStyles(): string {
 .rb button:disabled { opacity: .5; cursor: default; }
 .rb input[type=text]:focus, .rb select:focus, .rb button:focus-visible { outline: 2px solid var(--rb-accent); outline-offset: -1px; }
 .rb input[type=checkbox] { accent-color: var(--rb-accent); }
-.rb button.rb-primary { background: var(--rb-accent); color: #fff; border-color: transparent; }
+.rb button.rb-primary { background: var(--rb-accent); color: var(--rb-bg); border-color: transparent; }
 .rb button.rb-primary:hover:not(:disabled) { background: var(--rb-accent); filter: brightness(1.1); }
 .rb-banner { padding: 8px 10px; border-radius: var(--rb-radius); margin-bottom: 8px; border: 1px solid var(--rb-border); }
 .rb-banner.rb-error { border-color: #d33; background: #d333; }

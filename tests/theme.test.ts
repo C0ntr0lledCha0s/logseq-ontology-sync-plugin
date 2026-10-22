@@ -70,6 +70,16 @@ describe('themeVars', () => {
     const v = themeVars({ '--ls-primary-background-color': 'rgb(0, 43, 54)' })
     expect(v['--rb-tag-l']).toBe('62%')
   })
+  test('detects dark and light from hsl colours in all syntaxes', () => {
+    const tagL = (bg: string) => themeVars({ '--lx-gray-01': bg })['--rb-tag-l']
+    expect(tagL('hsl(0, 0%, 8.5%)')).toBe('62%')
+    expect(tagL('hsl(0 0% 8.5%)')).toBe('62%')
+    expect(tagL('hsla(210, 10%, 10%, 1)')).toBe('62%')
+    expect(tagL('hsl(0, 0%, 99%)')).toBe('48%')
+  })
+  test('unparseable background assumes a light theme', () => {
+    expect(themeVars({ '--lx-gray-01': 'oklch(10% 0 0)' })['--rb-tag-l']).toBe('48%')
+  })
   test('missing values fall back to a readable light theme', () => {
     const v = themeVars({ '--ls-primary-background-color': '  ' })
     expect(v['--rb-bg']).toBe('#ffffff')
