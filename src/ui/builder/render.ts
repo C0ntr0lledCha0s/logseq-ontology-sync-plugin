@@ -35,47 +35,56 @@ export interface ChromeVM {
 
 export function builderStyles(): string {
   return `
-.rb { background: var(--ls-primary-background-color, #fff); color: var(--ls-primary-text-color, #222);
-  width: min(1100px, 94vw); height: 88vh; border-radius: 8px; display: flex; flex-direction: column;
-  padding: 16px; box-sizing: border-box; font-size: 13px; box-shadow: 0 8px 32px rgba(0,0,0,.35); }
+.rb { background: var(--rb-bg); color: var(--rb-text); font-family: var(--rb-font);
+  width: min(1100px, 94vw); height: calc(100vh - var(--rb-top, 12px) - 12px); border-radius: calc(var(--rb-radius) * 2);
+  display: flex; flex-direction: column; margin-top: var(--rb-top, 12px);
+  padding: 16px; box-sizing: border-box; font-size: 13px; border: 1px solid var(--rb-border);
+  box-shadow: 0 8px 32px rgba(0,0,0,.35); }
 .rb * { box-sizing: border-box; }
+.rb ::selection { background: var(--rb-selection); }
 .rb-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .rb-head h2 { margin: 0; font-size: 16px; }
-.rb-muted { opacity: .6; }
+.rb-muted { color: var(--rb-muted); }
 .rb-spacer { flex: 1; }
-.rb button, .rb select, .rb input[type=text] { font: inherit; color: inherit;
-  background: var(--ls-secondary-background-color, #f3f3f3); border: 1px solid var(--ls-border-color, #8885);
-  border-radius: 4px; padding: 3px 10px; }
+.rb button, .rb select, .rb input[type=text] { font: inherit; color: var(--rb-text);
+  background: var(--rb-panel); border: 1px solid var(--rb-border);
+  border-radius: var(--rb-radius); padding: 3px 10px; }
 .rb button { cursor: pointer; }
-.rb button.rb-primary { background: var(--ls-link-text-color, #2d6cdf); color: #fff; border-color: transparent; }
-.rb-banner { padding: 8px 10px; border-radius: 4px; margin-bottom: 8px; border: 1px solid var(--ls-border-color, #8885); }
+.rb button:hover:not(:disabled), .rb select:hover { background: var(--rb-hover); }
+.rb button:disabled { opacity: .5; cursor: default; }
+.rb input[type=text]:focus, .rb select:focus, .rb button:focus-visible { outline: 2px solid var(--rb-accent); outline-offset: -1px; }
+.rb input[type=checkbox] { accent-color: var(--rb-accent); }
+.rb button.rb-primary { background: var(--rb-accent); color: #fff; border-color: transparent; }
+.rb button.rb-primary:hover:not(:disabled) { background: var(--rb-accent); filter: brightness(1.1); }
+.rb-banner { padding: 8px 10px; border-radius: var(--rb-radius); margin-bottom: 8px; border: 1px solid var(--rb-border); }
 .rb-banner.rb-error { border-color: #d33; background: #d333; }
 .rb-banner.rb-warn { border-color: #d9822b; background: #d9822b22; }
 .rb-banner.rb-ok { border-color: #3a9a5b; background: #3a9a5b22; }
 .rb-banner ul { margin: 4px 0 6px 18px; padding: 0; }
 .rb-banner button { margin-right: 6px; }
 .rb-presets { margin-bottom: 10px; line-height: 2.1; }
-.rb-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: .6; }
-.rb-chip { border: 1px dashed #888 !important; border-radius: 10px !important; padding: 1px 9px !important; opacity: .7; background: none !important; }
-.rb-chip.rb-selected { opacity: 1; border-style: solid !important; background: var(--ls-tertiary-background-color, #2d6cdf33) !important; }
+.rb-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--rb-muted); }
+.rb-chip { border: 1px dashed var(--rb-border) !important; border-radius: 10px !important; padding: 1px 9px !important; color: var(--rb-muted) !important; background: none !important; }
+.rb-chip.rb-selected { color: var(--rb-text) !important; border-style: solid !important; border-color: var(--rb-accent) !important; background: var(--rb-selection) !important; }
 .rb-body { display: flex; gap: 12px; flex: 1; min-height: 0; }
 .rb-toc { width: 210px; flex: none; overflow: auto; line-height: 1.8; }
-.rb-toc a { display: block; cursor: pointer; padding: 0 6px; border-radius: 4px; white-space: nowrap; }
-.rb-toc a.rb-active { background: var(--ls-tertiary-background-color, #8883); font-weight: 600; }
+.rb-toc a { display: block; cursor: pointer; padding: 0 6px; border-radius: var(--rb-radius); white-space: nowrap; }
+.rb-toc a:hover { background: var(--rb-hover); }
+.rb-toc a.rb-active { background: var(--rb-active); font-weight: 600; }
 .rb-toc a.rb-off { opacity: .45; text-decoration: line-through; }
-.rb-count { font-size: 11px; opacity: .65; }
-.rb-pane { flex: 1; overflow: auto; border-left: 1px solid #8883; padding-left: 12px; }
-.rb-section { border-top: 2px solid var(--ls-link-text-color, #2d6cdf); padding: 6px 0 12px; }
+.rb-count { font-size: 11px; color: var(--rb-muted); }
+.rb-pane { flex: 1; overflow: auto; border-left: 1px solid var(--rb-border); padding-left: 12px; }
+.rb-section { border-top: 2px solid var(--rb-accent); padding: 6px 0 12px; }
 .rb-section.rb-off-section { opacity: .55; }
 .rb-section h3 { margin: 0 0 4px; font-size: 15px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .rb-tag { padding: 0 6px; border-radius: 8px; font-size: 11px; }
-.rb-tag.rb-user { border: 1px solid #888; }
-.rb-tag.rb-parent { opacity: .6; border: 1px solid #8886; }
+.rb-tag.rb-user { border: 1px solid var(--rb-muted); }
+.rb-tag.rb-parent { color: var(--rb-muted); border: 1px solid var(--rb-border); }
 .rb-table { width: 100%; border-collapse: collapse; }
 .rb-table td { padding: 2px 6px 2px 0; vertical-align: top; }
 .rb-row-off { opacity: .45; }
 .rb-footer { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 10px; flex-wrap: wrap; }
-.rb-notices { font-size: 12px; margin-bottom: 8px; opacity: .85; }
+.rb-notices { font-size: 12px; margin-bottom: 8px; color: var(--rb-muted); }
 .rb-empty { padding: 24px 0; }
 `
 }
@@ -88,7 +97,9 @@ function hueOf(label: string): number {
 
 function renderTag(tag: TagVM): string {
   const style =
-    tag.kind === 'preset' ? ` style="background:hsl(${hueOf(tag.label)} 65% 55% / .35)"` : ''
+    tag.kind === 'preset'
+      ? ` style="background:hsl(${hueOf(tag.label)} 65% var(--rb-tag-l, 55%) / var(--rb-tag-a, .3))"`
+      : ''
   return `<span class="rb-tag rb-${tag.kind}"${style}>${escapeHtml(tag.label)}</span>`
 }
 
