@@ -6,7 +6,7 @@ Compose Schema.org roles for Logseq DB graphs from presets, trim them class by c
 
 ## What it does
 
-Ontology Sync is a **role builder** for Logseq DB graphs (desktop 2.0.x; file-based graphs are not supported). It loads the Schema.org library and role presets published with the latest [logseq-template-graph](https://github.com/C0ntr0lledCha0s/logseq-template-graph) release, lets you compose a role from one or more presets, trim it down class by class and property by property, and exports a trimmed `:graph-ontology` EDN file that you import with Logseq's own importer.
+Ontology Role Builder is a **role builder** for Logseq DB graphs (desktop 2.0.x; file-based graphs are not supported). It loads the Schema.org library and role presets published with the latest [logseq-template-graph](https://github.com/C0ntr0lledCha0s/logseq-template-graph) release, lets you compose a role from one or more presets, trim it down class by class and property by property, and exports a trimmed `:graph-ontology` EDN file that you import with Logseq's own importer.
 
 The plugin never creates classes or properties through the plugin API. Logseq does the import itself.
 

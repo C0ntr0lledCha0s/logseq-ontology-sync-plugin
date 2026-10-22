@@ -10,7 +10,7 @@ import { buildExport, exportFileName, snapshotOf } from '../../role/export'
 import { roleFromFile, roleNameError, roleToFile } from '../../role/role-file'
 import { computeSelection } from '../../role/selection'
 import type { RoleDefinition } from '../../role/types'
-import { matchClasses, type ClassOption } from './class-match'
+import { firstAvailable, matchClasses, type ClassOption } from './class-match'
 import { setClass, setProperty, togglePreset } from './overrides'
 import {
   renderBuilder,
@@ -68,6 +68,7 @@ export class BuilderController {
   private afterDiscard: (() => Promise<void> | void) | null = null
 
   /** Add-class combobox state; kept here so re-renders do not lose it. */
+  private suppressComboOpen = false
   private combo = { open: false, query: '', active: -1 }
 
   private observer: IntersectionObserver | null = null
@@ -187,13 +188,21 @@ export class BuilderController {
       title: c.title,
       parentTitle: library.classes.get(c.parents[0] ?? '')?.title ?? null,
     }))
+    return matchClasses(options, this.combo.query, this.selectedIdents())
+  }
+
+  private selectedIdents(): Set<string> {
     const selected = new Set<string>()
     if (this.role) {
-      for (const c of computeSelection(library, this.presets, this.role).classes.values()) {
+      for (const c of computeSelection(
+        this.requireLibrary(),
+        this.presets,
+        this.role
+      ).classes.values()) {
         if (c.on) selected.add(c.ident)
       }
     }
-    return matchClasses(options, this.combo.query, selected)
+    return selected
   }
 
   private requireLibrary(): Library {
@@ -297,12 +306,9 @@ export class BuilderController {
       }
       case 'Enter': {
         ev.preventDefault()
-        const q = this.combo.query.trim().toLowerCase()
-        const item =
-          (this.combo.open ? items[this.combo.active] : undefined) ??
-          items.find((m) => m.title.toLowerCase() === q)
+        const item = this.combo.open ? items[this.combo.active] : undefined
         if (item) {
-          if (!item.selected) this.pickClass(item.ident)
+          this.pickClass(item.ident)
           return
         }
         this.addClass()
@@ -362,7 +368,12 @@ export class BuilderController {
       this.refreshCombo()
     })
     this.root.addEventListener('focusin', (ev) => {
-      if ((ev.target as HTMLElement).id !== 'rb-add-class' || this.combo.open) return
+      if (
+        (ev.target as HTMLElement).id !== 'rb-add-class' ||
+        this.combo.open ||
+        this.suppressComboOpen
+      )
+        return
       this.combo.open = true
       this.refreshCombo()
     })
@@ -572,24 +583,31 @@ export class BuilderController {
     this.combo = { open: false, query: '', active: -1 }
   }
 
+  /** Adds a class that is not yet in the role; keeps focus in the empty input for the next one. */
   private pickClass(ident: string): void {
+    if (this.selectedIdents().has(ident)) return
     this.resetCombo()
     this.edit((lib, role) => setClass(lib, this.presets, role, ident, true))
     this.goto(ident)
+    this.suppressComboOpen = true
+    this.root.querySelector<HTMLInputElement>('#rb-add-class')?.focus()
+    this.suppressComboOpen = false
   }
 
   private addClass(): void {
-    const library = this.requireLibrary()
     const input = this.root.querySelector<HTMLInputElement>('#rb-add-class')
-    const query = (input?.value ?? '').trim().toLowerCase()
-    if (query === '') return
-    const all = [...library.classes.values()]
-    const match =
-      all.find((c) => c.title.toLowerCase() === query) ??
-      all.find((c) => c.title.toLowerCase().startsWith(query)) ??
-      all.find((c) => c.title.toLowerCase().includes(query))
+    const typed = input?.value ?? ''
+    if (typed.trim() === '') return
+    this.combo.query = typed
+    const items = this.comboItems()
+    if (items.length === 0) {
+      this.error = `No class matches "${typed}"`
+      this.render()
+      return
+    }
+    const match = firstAvailable(items)
     if (!match) {
-      this.error = `No class matches "${input?.value ?? ''}"`
+      this.error = `"${typed}" is already added`
       this.render()
       return
     }

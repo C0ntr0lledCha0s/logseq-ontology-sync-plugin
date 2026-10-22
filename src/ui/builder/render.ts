@@ -56,7 +56,7 @@ export function renderComboList(combo: AddClassVM): string {
         : ''
       const added = m.selected ? '<span class="rb-muted rb-combo-added">✓ added</span>' : ''
       const cls = `rb-combo-item${i === combo.active ? ' rb-active' : ''}${m.selected ? ' rb-added' : ''}`
-      return `<div class="${cls}" role="option" id="rb-combo-opt-${i}" aria-selected="${i === combo.active}" data-action="combo-pick" data-ident="${escapeHtml(m.ident)}" data-combo-index="${i}"><span>${escapeHtml(m.title)}${parent}</span>${added}</div>`
+      return `<div class="${cls}" role="option" id="rb-combo-opt-${i}" aria-selected="${i === combo.active}"${m.selected ? ' aria-disabled="true"' : ' data-action="combo-pick"'} data-ident="${escapeHtml(m.ident)}" data-combo-index="${i}"><span>${escapeHtml(m.title)}${parent}</span>${added}</div>`
     })
     .join('')
   return `<div class="rb-combo-list" role="listbox">${items}</div>`
@@ -113,7 +113,7 @@ export function builderStyles(): string {
   border-radius: var(--rb-radius); font-family: var(--rb-font); box-shadow: 0 6px 20px rgba(0,0,0,.3); padding: 2px; }
 .rb-combo-item { display: flex; justify-content: space-between; gap: 12px; padding: 2px 8px; cursor: pointer; border-radius: var(--rb-radius); }
 .rb-combo-item:hover, .rb-combo-item.rb-active { background: var(--rb-hover); }
-.rb-combo-item.rb-added { opacity: .6; }
+.rb-combo-item.rb-added { opacity: .6; cursor: default; }
 .rb-combo-sub, .rb-combo-added { font-size: 11px; white-space: nowrap; }
 .rb-combo-empty { padding: 4px 8px; }
 .rb-section { border-top: 2px solid var(--rb-accent); padding: 6px 0 12px; }

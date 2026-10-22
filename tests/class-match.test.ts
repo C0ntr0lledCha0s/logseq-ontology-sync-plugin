@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { matchClasses, type ClassOption } from '../src/ui/builder/class-match'
+import { firstAvailable, matchClasses, type ClassOption } from '../src/ui/builder/class-match'
 
 const opt = (title: string, parentTitle: string | null = null): ClassOption => ({
   ident: `:schema.class/${title}`,
@@ -36,5 +36,17 @@ describe('matchClasses', () => {
     const out = matchClasses(classes, 'local', new Set([':schema.class/LocalBusiness']))
     expect(out).toEqual([{ ...opt('LocalBusiness', 'Organization'), selected: true }])
     expect(matchClasses(classes, 'person', new Set()).every((m) => !m.selected)).toBe(true)
+  })
+})
+
+describe('firstAvailable', () => {
+  test('skips selected classes', () => {
+    const sel = new Set([':schema.class/Person'])
+    expect(firstAvailable(matchClasses(classes, 'p', sel))?.title).toBe('Place')
+  })
+  test('undefined when all matches are selected or none match', () => {
+    const sel = new Set([':schema.class/Person'])
+    expect(firstAvailable(matchClasses(classes, 'person', sel))).toBeUndefined()
+    expect(firstAvailable(matchClasses(classes, 'zzz', sel))).toBeUndefined()
   })
 })

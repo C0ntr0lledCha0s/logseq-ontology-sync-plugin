@@ -35,3 +35,8 @@ export function matchClasses(
     selected: selected.has(c.ident),
   }))
 }
+
+/** The first match that can still be added (what the popup's first enabled row is). */
+export function firstAvailable(matches: readonly ClassMatch[]): ClassMatch | undefined {
+  return matches.find((m) => !m.selected)
+}
