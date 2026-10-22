@@ -10,9 +10,11 @@ import { buildExport, exportFileName, snapshotOf } from '../../role/export'
 import { roleFromFile, roleNameError, roleToFile } from '../../role/role-file'
 import { computeSelection } from '../../role/selection'
 import type { RoleDefinition } from '../../role/types'
+import { matchClasses, type ClassOption } from './class-match'
 import { setClass, setProperty, togglePreset } from './overrides'
 import {
   renderBuilder,
+  renderComboList,
   renderEmpty,
   renderLibraryError,
   renderLoading,
@@ -64,6 +66,9 @@ export class BuilderController {
   private busy = false
   private graphId: string | null = null
   private afterDiscard: (() => Promise<void> | void) | null = null
+
+  /** Add-class combobox state; kept here so re-renders do not lose it. */
+  private combo = { open: false, query: '', active: -1 }
 
   private observer: IntersectionObserver | null = null
   private listening = false
@@ -171,8 +176,24 @@ export class BuilderController {
       confirm: this.confirm,
       error: this.error,
       hint: this.hint,
-      classNames: [...library.classes.values()].map((c) => c.title),
+      addClass: { ...this.combo, items: this.comboItems() },
     }
+  }
+
+  private comboItems(): ReturnType<typeof matchClasses> {
+    const library = this.requireLibrary()
+    const options: ClassOption[] = [...library.classes.values()].map((c) => ({
+      ident: c.ident,
+      title: c.title,
+      parentTitle: library.classes.get(c.parents[0] ?? '')?.title ?? null,
+    }))
+    const selected = new Set<string>()
+    if (this.role) {
+      for (const c of computeSelection(library, this.presets, this.role).classes.values()) {
+        if (c.on) selected.add(c.ident)
+      }
+    }
+    return matchClasses(options, this.combo.query, selected)
   }
 
   private requireLibrary(): Library {
@@ -184,6 +205,12 @@ export class BuilderController {
     const pane = this.root.querySelector<HTMLElement>('.rb-pane')
     const toc = this.root.querySelector<HTMLElement>('.rb-toc')
     const scroll = { pane: pane?.scrollTop ?? 0, toc: toc?.scrollTop ?? 0 }
+    const focused = document.activeElement
+    const comboInput = this.root.querySelector<HTMLInputElement>('#rb-add-class')
+    const caret =
+      this.combo.open && comboInput !== null && focused === comboInput
+        ? { start: comboInput.selectionStart, end: comboInput.selectionEnd }
+        : null
     this.observer?.disconnect()
     this.observer = null
 
@@ -215,6 +242,80 @@ export class BuilderController {
     if (newPane) newPane.scrollTop = scroll.pane
     if (newToc) newToc.scrollTop = scroll.toc
     this.observeSections(newPane)
+    if (caret) {
+      const input = this.root.querySelector<HTMLInputElement>('#rb-add-class')
+      input?.focus()
+      input?.setSelectionRange(caret.start, caret.end)
+      this.scrollActiveIntoView()
+    }
+  }
+
+  /** Re-renders only the combobox popup (keeps the input, its focus and caret untouched). */
+  private refreshCombo(): void {
+    const pop = this.root.querySelector<HTMLElement>('#rb-combo-pop')
+    if (!pop) return
+    const addClass = { ...this.combo, items: this.comboItems() }
+    pop.innerHTML = renderComboList(addClass)
+    this.root
+      .querySelector<HTMLInputElement>('#rb-add-class')
+      ?.setAttribute('aria-expanded', String(addClass.open))
+    this.scrollActiveIntoView()
+  }
+
+  private scrollActiveIntoView(): void {
+    this.root.querySelector<HTMLElement>('.rb-combo-item.rb-active')?.scrollIntoView({
+      block: 'nearest',
+    })
+  }
+
+  private closeCombo(): void {
+    if (!this.combo.open) return
+    this.combo.open = false
+    this.combo.active = -1
+    this.refreshCombo()
+  }
+
+  private onComboKey(ev: KeyboardEvent): void {
+    const items = this.comboItems()
+    switch (ev.key) {
+      case 'ArrowDown':
+      case 'ArrowUp': {
+        ev.preventDefault()
+        if (items.length === 0) return
+        const step = ev.key === 'ArrowDown' ? 1 : -1
+        const wasOpen = this.combo.open
+        this.combo.open = true
+        const from = wasOpen ? this.combo.active : -1
+        this.combo.active =
+          from < 0
+            ? step === 1
+              ? 0
+              : items.length - 1
+            : (from + step + items.length) % items.length
+        this.refreshCombo()
+        return
+      }
+      case 'Enter': {
+        ev.preventDefault()
+        const q = this.combo.query.trim().toLowerCase()
+        const item =
+          (this.combo.open ? items[this.combo.active] : undefined) ??
+          items.find((m) => m.title.toLowerCase() === q)
+        if (item) {
+          if (!item.selected) this.pickClass(item.ident)
+          return
+        }
+        this.addClass()
+        return
+      }
+      case 'Escape':
+        ev.stopPropagation()
+        this.closeCombo()
+        return
+      case 'Tab':
+        this.closeCombo()
+        return
+    }
   }
 
   private observeSections(pane: HTMLElement | null): void {
@@ -254,7 +355,36 @@ export class BuilderController {
       const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-change]')
       if (el) this.run(this.onChange(el.dataset.change ?? '', el))
     })
+    this.root.addEventListener('input', (ev) => {
+      const el = ev.target as HTMLElement
+      if (el.id !== 'rb-add-class') return
+      this.combo = { open: true, query: (el as HTMLInputElement).value, active: -1 }
+      this.refreshCombo()
+    })
+    this.root.addEventListener('focusin', (ev) => {
+      if ((ev.target as HTMLElement).id !== 'rb-add-class' || this.combo.open) return
+      this.combo.open = true
+      this.refreshCombo()
+    })
+    this.root.addEventListener('mousedown', (ev) => {
+      // Keep the input focused (and its caret) when picking from the popup.
+      if ((ev.target as HTMLElement).closest('.rb-combo-list')) ev.preventDefault()
+    })
+    this.root.addEventListener('click', (ev) => {
+      const t = ev.target as HTMLElement
+      if (t.id === 'rb-add-class' && !this.combo.open) {
+        this.combo.open = true
+        this.refreshCombo()
+      }
+    })
+    document.addEventListener('click', (ev) => {
+      if (!(ev.target as HTMLElement).closest?.('.rb-combo')) this.closeCombo()
+    })
     this.root.addEventListener('keydown', (ev) => {
+      if ((ev.target as HTMLElement).id === 'rb-add-class') {
+        this.onComboKey(ev)
+        return
+      }
       if (ev.key !== 'Enter') return
       const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-enter]')
       if (el) this.run(this.onAction(el.dataset.enter ?? '', el))
@@ -293,6 +423,9 @@ export class BuilderController {
         return
       case 'add-class':
         this.addClass()
+        return
+      case 'combo-pick':
+        this.pickClass(el.dataset.ident ?? '')
         return
       case 'save':
         await this.exclusive(() => this.saveRole())
@@ -435,6 +568,16 @@ export class BuilderController {
     target?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
 
+  private resetCombo(): void {
+    this.combo = { open: false, query: '', active: -1 }
+  }
+
+  private pickClass(ident: string): void {
+    this.resetCombo()
+    this.edit((lib, role) => setClass(lib, this.presets, role, ident, true))
+    this.goto(ident)
+  }
+
   private addClass(): void {
     const library = this.requireLibrary()
     const input = this.root.querySelector<HTMLInputElement>('#rb-add-class')
@@ -450,8 +593,7 @@ export class BuilderController {
       this.render()
       return
     }
-    this.edit((lib, role) => setClass(lib, this.presets, role, match.ident, true))
-    this.goto(match.ident)
+    this.pickClass(match.ident)
   }
 
   private async updateLibrary(): Promise<void> {

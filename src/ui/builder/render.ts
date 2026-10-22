@@ -1,3 +1,4 @@
+import type { ClassMatch } from './class-match'
 import type { BuilderVM, RowVM, SectionVM, TagVM } from './view-model'
 
 export function escapeHtml(text: string): string {
@@ -30,7 +31,35 @@ export interface ChromeVM {
   error: string | null
   /** Short success hint banner. */
   hint: string | null
-  classNames: string[]
+  addClass: AddClassVM
+}
+
+/** State and current matches of the "+ add class…" combobox. */
+export interface AddClassVM {
+  open: boolean
+  query: string
+  /** Index into `items` of the keyboard-active entry; -1 for none. */
+  active: number
+  items: ClassMatch[]
+}
+
+/** The combobox popup: empty while closed. Re-rendered on its own while typing. */
+export function renderComboList(combo: AddClassVM): string {
+  if (!combo.open) return ''
+  if (combo.items.length === 0) {
+    return '<div class="rb-combo-list" role="listbox"><div class="rb-combo-empty rb-muted">No matching classes</div></div>'
+  }
+  const items = combo.items
+    .map((m, i) => {
+      const parent = m.parentTitle
+        ? ` <span class="rb-muted rb-combo-sub">extends ${escapeHtml(m.parentTitle)}</span>`
+        : ''
+      const added = m.selected ? '<span class="rb-muted rb-combo-added">✓ added</span>' : ''
+      const cls = `rb-combo-item${i === combo.active ? ' rb-active' : ''}${m.selected ? ' rb-added' : ''}`
+      return `<div class="${cls}" role="option" id="rb-combo-opt-${i}" aria-selected="${i === combo.active}" data-action="combo-pick" data-ident="${escapeHtml(m.ident)}" data-combo-index="${i}"><span>${escapeHtml(m.title)}${parent}</span>${added}</div>`
+    })
+    .join('')
+  return `<div class="rb-combo-list" role="listbox">${items}</div>`
 }
 
 export function builderStyles(): string {
@@ -74,6 +103,19 @@ export function builderStyles(): string {
 .rb-toc a.rb-off { opacity: .45; text-decoration: line-through; }
 .rb-count { font-size: 11px; color: var(--rb-muted); }
 .rb-pane { flex: 1; overflow: auto; border-left: 1px solid var(--rb-border); padding-left: 12px; }
+.rb-toc, .rb-pane, .rb-combo-list { scrollbar-width: thin; scrollbar-color: var(--rb-border) transparent; }
+.rb-toc::-webkit-scrollbar, .rb-pane::-webkit-scrollbar, .rb-combo-list::-webkit-scrollbar { width: 8px; height: 8px; }
+.rb-toc::-webkit-scrollbar-track, .rb-pane::-webkit-scrollbar-track, .rb-combo-list::-webkit-scrollbar-track { background: transparent; }
+.rb-toc::-webkit-scrollbar-thumb, .rb-pane::-webkit-scrollbar-thumb, .rb-combo-list::-webkit-scrollbar-thumb { background: var(--rb-border); border-radius: 4px; }
+.rb-combo { position: relative; display: inline-block; }
+.rb-combo-pop { position: absolute; top: 100%; left: 0; z-index: 10; min-width: 280px; line-height: 1.5; }
+.rb-combo-list { max-height: 280px; overflow-y: auto; background: var(--rb-panel); border: 1px solid var(--rb-border);
+  border-radius: var(--rb-radius); font-family: var(--rb-font); box-shadow: 0 6px 20px rgba(0,0,0,.3); padding: 2px; }
+.rb-combo-item { display: flex; justify-content: space-between; gap: 12px; padding: 2px 8px; cursor: pointer; border-radius: var(--rb-radius); }
+.rb-combo-item:hover, .rb-combo-item.rb-active { background: var(--rb-hover); }
+.rb-combo-item.rb-added { opacity: .6; }
+.rb-combo-sub, .rb-combo-added { font-size: 11px; white-space: nowrap; }
+.rb-combo-empty { padding: 4px 8px; }
 .rb-section { border-top: 2px solid var(--rb-accent); padding: 6px 0 12px; }
 .rb-section.rb-off-section { opacity: .55; }
 .rb-section h3 { margin: 0 0 4px; font-size: 15px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -188,9 +230,6 @@ export function renderBuilder(vm: BuilderVM, chrome: ChromeVM): string {
         `<button type="button" class="rb-chip${c.selected ? ' rb-selected' : ''}" data-action="toggle-preset" data-id="${escapeHtml(c.id)}">${c.selected ? '✓ ' : ''}${escapeHtml(c.name)}</button>`
     )
     .join(' ')
-  const datalist = chrome.classNames
-    .map((n) => `<option value="${escapeHtml(n)}"></option>`)
-    .join('')
   const toc = vm.contents
     .map(
       (c) =>
@@ -203,8 +242,7 @@ export function renderBuilder(vm: BuilderVM, chrome: ChromeVM): string {
       : ''
   return wrap(`${renderHeader(chrome, summary)}
     <div class="rb-presets"><span class="rb-label">Start from presets</span> ${chips}
-      <input type="text" id="rb-add-class" list="rb-class-list" data-enter="add-class" placeholder="+ add class…" style="width:170px" autocomplete="off">
-      <datalist id="rb-class-list">${datalist}</datalist>
+      <span class="rb-combo"><input type="text" id="rb-add-class" role="combobox" aria-expanded="${chrome.addClass.open}" aria-controls="rb-combo-pop" placeholder="+ add class…" style="width:170px" autocomplete="off" value="${escapeHtml(chrome.addClass.query)}"><div class="rb-combo-pop" id="rb-combo-pop">${renderComboList(chrome.addClass)}</div></span>
       <button type="button" data-action="add-class">Add</button></div>
     ${notices}
     <div class="rb-body">
