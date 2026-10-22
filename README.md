@@ -1,6 +1,8 @@
-# Logseq Ontology Sync Plugin
+# Ontology Role Builder
 
-A Logseq plugin for DB graphs (desktop 2.0.x).
+Compose Schema.org roles for Logseq DB graphs from presets, trim them class by class and property by property, and export a trimmed `:graph-ontology` EDN that Logseq imports natively.
+
+**Requirements:** Logseq DB graph, desktop 2.0.x (file-based graphs are not supported). See the [changelog](CHANGELOG.md).
 
 ## What it does
 

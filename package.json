@@ -1,7 +1,21 @@
 {
   "name": "logseq-ontology-sync-plugin",
   "version": "0.2.0",
-  "description": "Logseq role builder: compose Schema.org roles from presets, trim them, and export a graph-ontology EDN for import",
+  "description": "Logseq DB role builder: compose Schema.org roles from presets, trim them, and export a graph-ontology EDN for import",
+  "repo": "C0ntr0lledCha0s/logseq-ontology-sync-plugin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin.git"
+  },
+  "homepage": "https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin#readme",
+  "keywords": [
+    "logseq",
+    "logseq-plugin",
+    "ontology",
+    "schema.org",
+    "db-graph",
+    "role-builder"
+  ],
   "author": "C0ntr0lledCha0s",
   "license": "MIT",
   "type": "module",
@@ -14,7 +28,7 @@
   "scripts": {
     "dev": "bun run vite",
     "build": "bun run typecheck && bun run vite build && bun run build:package",
-    "build:package": "bun -e \"const p=await Bun.file('package.json').json(); delete p.type; delete p.scripts; delete p.devDependencies; delete p.trustedDependencies; delete p.engines; await Bun.write('dist/package.json', JSON.stringify(p, null, 2))\" && cp icon.svg dist/",
+    "build:package": "bun scripts/package.ts",
     "preview": "bun run vite preview",
     "test": "bun test",
     "test:watch": "bun test --watch",
@@ -26,7 +40,9 @@
     "typecheck": "bun run tsc --noEmit",
     "deploy": "bun run build && mkdir -p /mnt/c/logseq-plugins/logseq-ontology-sync && cp -r dist/* /mnt/c/logseq-plugins/logseq-ontology-sync/"
   },
-  "trustedDependencies": ["@logseq/libs"],
+  "trustedDependencies": [
+    "@logseq/libs"
+  ],
   "dependencies": {
     "@logseq/libs": "0.3.4",
     "edn-data": "^1.1.2"
