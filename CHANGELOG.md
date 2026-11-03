@@ -2,7 +2,7 @@
 
 All notable changes to this plugin are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.0] - 2026-10-22
+## [0.2.0] - 2026-11-03
 
 ### Added
 - Rebuilt as a role builder: compose a role from the union of one or more presets, then trim classes and properties.
@@ -12,6 +12,9 @@ All notable changes to this plugin are documented here. The format follows [Keep
 - Clash and removal warnings before export.
 - Library and presets loaded from logseq-template-graph v2.0.0+ releases via raw.githubusercontent.com.
 - Styling that follows the Logseq theme.
+
+### Fixed
+- Classes that extend a Logseq built-in, such as the project-management `Work Item` extending `Task`, no longer crash role selection and export.
 
 ### Removed
 - Sync, import, and plugin-API class/property creation code.
