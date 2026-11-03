@@ -1,296 +1,36 @@
 # CLAUDE.md - Project Context for Claude Code
 
-This file provides context for Claude Code when working on this project.
-
 ## Project Overview
 
-**logseq-ontology-sync-plugin** is a Logseq plugin for managing and synchronizing ontology templates. It allows users to import, export, and sync class/property definitions from a marketplace of templates hosted on GitHub releases.
+**logseq-ontology-sync-plugin** (v0.2.0) is a **role builder** plugin for Logseq DB graphs (desktop 2.0.x only; file-based graphs are not supported). It loads the Schema.org library and presets from the latest `C0ntr0lledCha0s/logseq-template-graph` GitHub release (tag from the releases API; `library/schema-library.edn` + `library/schema-presets.edn` read from raw.githubusercontent at that tag, v2.0.0+; cached, "Update library" is explicit), lets the user tick presets (union), trim classes and properties per class, saves roles on a hidden "Ontology Roles" page, imports/exports role files (JSON, format `ontology-role` v1), and exports a trimmed `:graph-ontology` EDN to Downloads. The user imports that file with Logseq's own **Import -> EDN to DB Graph**. The plugin never creates entities through the API.
 
-> **DB Graphs Only**: This plugin is designed exclusively for Logseq's **database (DB) graph** mode, not the traditional file-based markdown graphs. DB graphs use a structured database with typed properties and classes - features that don't exist in file-based graphs.
+Idents: `:schema.class/*`, `:schema.property/*`, `:custom.*`.
 
-### Key Features
-- Import ontology templates from files or URLs
-- Marketplace integration with GitHub releases
-- Sync templates from configured sources
-- Export current graph ontology
-- Logseq-native UI panel
-
-### Logseq DB Graph Documentation
-
-When researching Logseq APIs or behavior, prioritize these resources:
-- **Plugin API Reference**: https://logseq.github.io/plugins/interfaces/IEditorProxy.html (TypeDoc reference)
-- **Plugin API Overview**: https://plugins-doc.logseq.com/ (note: some APIs are DB-specific)
-- **DB Graph Docs**: https://docs.logseq.com/#/page/db%20graphs
-- **Schema Reference**: https://docs.logseq.com/#/page/properties (for property types, cardinality)
-- **Classes**: https://docs.logseq.com/#/page/classes
-
-Avoid referencing file-based graph documentation for ontology/schema features.
-
-### DB Mode API Reference (from IEditorProxy)
-
-**Property Management:**
-```typescript
-// Create or update a property with schema
-upsertProperty(key: string, schema?: {
-  cardinality?: "many" | "one";
-  hide?: boolean;
-  public?: boolean;
-  type?: "default" | "number" | "node" | "date" | "checkbox" | "url";
-}, opts?: { name?: string }): Promise<IEntityID>
-
-getProperty(key: string): Promise<PropertyEntity>
-removeProperty(key: string): Promise<void>
-getAllProperties(): Promise<PropertyEntity[]>
-```
-
-**Tag/Class Management:**
-In Logseq DB mode, **Tags = Classes**. Use these dedicated methods:
-```typescript
-// Create a new tag (class)
-createTag(tagName: string, opts?: { uuid?: string }): Promise<PageEntity>
-
-// Link a property to a tag
-addTagProperty(tagId: BlockIdentity, propertyIdOrName: BlockIdentity): Promise<void>
-removeTagProperty(tagId: BlockIdentity, propertyIdOrName: BlockIdentity): Promise<void>
-
-// Set tag inheritance (parent class)
-addTagExtends(tagId: BlockIdentity, parentTagIdOrName: BlockIdentity): Promise<void>
-removeTagExtends(tagId: BlockIdentity, parentTagIdOrName: BlockIdentity): Promise<void>
-
-// Query tags
-getAllTags(): Promise<PageEntity[]>
-getTag(nameOrIdent: string | number): Promise<PageEntity>
-getTagsByName(tagName: string): Promise<PageEntity[]>
-```
-
-**Block Tag Operations:**
-```typescript
-addBlockTag(blockId: BlockIdentity, tagId: BlockIdentity): Promise<void>
-removeBlockTag(blockId: BlockIdentity, tagId: BlockIdentity): Promise<void>
-```
-
-**Icon Management:**
-```typescript
-// Set icon on a block/page/property/tag
-setBlockIcon(blockId: string, iconType: 'tabler-icon' | 'emoji', iconName: string): Promise<void>
-removeBlockIcon(blockId: string): Promise<void>
-```
-> **Implementation Status (Feb 2025):**
-> - ✅ **Tabler icons are IMPLEMENTED** - The plugin now sets Tabler icons on properties and tags during import/update
-> - ❌ **Emoji icons are NOT supported** - Logseq's emoji lookup table is inaccessible; all emoji formats fail with "Can't find emoji for X"
->
-> When importing ontology with emoji icons, they are parsed but skipped during application. Only Tabler icons are applied.
-> Icon types are `"tabler-icon"` (icon name from Tabler Icons library) or `"emoji"` (not supported via API).
-
-**Setting System Description Field:**
-```typescript
-// ❌ WRONG - creates a user property named "description"
-await logseq.Editor.upsertBlockProperty(uuid, 'description', 'My description')
-
-// ✅ CORRECT - sets the system logseq.property/description field
-await logseq.Editor.upsertBlockProperty(uuid, ':logseq.property/description', 'My description')
-```
-> **Discovery (Feb 2025):** Using the full namespaced key with colon prefix sets the SYSTEM description field, not a user property. The value is stored as an entity reference internally.
-
-> **Note:** There is no `upsertTag` method - use `createTag` for creation. The plugin ownership restriction still applies: plugins can only modify entities they created.
+Background: `docs/plugin/native-edn-import-research.md` (why EDN export instead of API creation), `docs/api-field-reconciliation.md` (historical), design and plan in `docs/superpowers/`.
 
 ## Technology Stack
 
-- **Runtime**: Bun (>= 1.0.0)
-- **Language**: TypeScript 5.3+
-- **Build**: Vite with vite-plugin-logseq
-- **Testing**: Bun's built-in test runner
-- **Linting**: ESLint + Prettier
-- **Plugin SDK**: @logseq/libs
+- Bun (>= 1.0.0), TypeScript, Vite with vite-plugin-logseq
+- Tests: Bun's built-in runner; lint: ESLint + Prettier
+- Plugin SDK: `@logseq/libs` pinned exactly to `0.3.4` (npm `next` tag)
 
-## Project Structure
+## Architecture
 
-```
-src/
-├── index.ts              # Plugin entry point, registers commands and UI
-├── plugin-controller.ts  # Main orchestrator for all plugin operations
-├── settings.ts           # Plugin settings schema (useSettingsSchema)
-├── api/                  # Logseq database API interactions
-│   ├── ontology-api.ts   # CRUD for properties and classes
-│   ├── queries.ts        # Datalog query builders
-│   └── logseq-types.ts   # Type definitions for Logseq entities
-├── import/               # Import workflow and diff logic
-│   ├── importer.ts       # Coordinates parsing, validation, applying
-│   └── diff.ts           # Compares templates, detects conflicts
-├── sync/                 # Sync engine for source synchronization
-│   ├── engine.ts         # Main sync orchestration
-│   └── state.ts          # Sync state management
-├── sources/              # Source management (URL/file fetching)
-│   ├── registry.ts       # In-memory source storage
-│   └── fetcher.ts        # HTTP fetch and local file reading
-├── marketplace/          # GitHub releases marketplace
-│   └── github-releases.ts # Fetches templates from GitHub releases
-├── parser/               # EDN parsing and validation
-│   └── edn-parser.ts     # Parse EDN to typed structures
-├── types/                # Unified type system (canonical types)
-│   ├── index.ts          # PropertyDefinition, ClassDefinition
-│   └── converters.ts     # Type converters between modules
-├── ui/                   # UI components
-│   ├── main-panel.ts     # HTML/CSS for main plugin panel
-│   └── components.ts     # showMessage, showConfirm, pickFile
-└── utils/
-    ├── logger.ts         # Structured logging
-    └── environment.ts    # Runtime detection (browser/Node/Bun)
+Data flow: library source -> parse -> selection -> view model/render -> export/conflicts -> download. Roles persist on the hidden page.
 
-tests/                    # Test files (*.test.ts)
-```
+- `src/edn/` - EDN reader, writer and value helpers (keywords, sets, maps) used for the library files and the export.
+- `src/library/` - `source.ts` resolves the latest release tag, downloads the library files from raw.githubusercontent at that tag and caches them (FileStorage `hasItem` before `getItem`) (explicit refresh only, update check separate); `parse.ts` turns the EDN into a typed `Library` (classes, properties, presets); `types.ts` holds the types.
+- `src/role/` - `types.ts` (RoleDefinition, Selection); `selection.ts` computes the union of ticked presets plus user overrides; `export.ts` builds the trimmed `:graph-ontology` EDN and file name; `conflicts.ts` compares property type/cardinality with the live graph and blocks export on clashes; `role-file.ts` reads/writes the `ontology-role` v1 JSON.
+- `src/logseq/` - Logseq-facing adapters: `role-store.ts` (roles on the hidden "Ontology Roles" page), `live-graph.ts` (reads live property schemas), `download.ts` (file download), `types.ts`.
+- `src/ui/builder/` - `view-model.ts` (pure state -> view model, source tags), `overrides.ts` (user add/remove edits), `render.ts` (HTML string), `controller.ts` (events, wiring, export flow).
+- `src/index.ts` entry, `src/plugin-controller.ts` toolbar button + "Ontology: Open role builder" command, `src/settings.ts`, `src/utils/logger.ts`.
+
+Re-import is additive: Logseq never removes things on re-import, so removals are done by hand; the UI warns before export.
 
 ## Common Commands
 
 ```bash
-# Development
-bun run dev              # Start Vite dev server
-bun run build            # Build for production (dist/)
-bun run deploy           # Build and copy to local Logseq plugins folder
-
-# Testing
-bun run test             # Run all tests
-bun run test:watch       # Watch mode
-bun run test:coverage    # With coverage report
-
-# Code Quality
-bun run lint             # ESLint check
-bun run lint:fix         # ESLint auto-fix
-bun run typecheck        # TypeScript type check
-bun run format           # Prettier format
+bun run dev | build | test | typecheck | lint | deploy
 ```
 
-## Key Patterns
-
-### Plugin Controller
-`PluginController` is the main orchestrator. All user-facing operations go through it:
-- `showPanel()` / `closePanel()` - Toggle the main UI panel
-- `importFromFile()` - Import from local .edn file
-- `importTemplate(url, name)` - Import from marketplace URL
-- `exportTemplate()` - Export current ontology
-- `handleSync()` - Sync from configured sources
-
-### Logseq API Usage
-```typescript
-// Show messages
-await logseq.UI.showMsg('message', 'success' | 'error' | 'warning' | 'info')
-
-// Settings
-logseq.useSettingsSchema(settingsSchema)
-logseq.showSettingsUI()
-logseq.settings // Read current settings
-
-// Main UI
-logseq.showMainUI()
-logseq.hideMainUI()
-logseq.setMainUIInlineStyle({...})
-
-// Inject UI
-logseq.provideUI({ key, template })
-logseq.provideStyle(css)
-logseq.provideModel({ methodName: handler })
-
-// Commands
-logseq.App.registerCommandPalette({ key, label }, callback)
-logseq.App.registerUIItem('toolbar', { key, template })
-```
-
-### UI Event Handling
-UI uses `data-action` attributes with direct DOM event listeners (more reliable than `data-on-click` in DB mode):
-```html
-<button data-action="import-file">Import</button>
-```
-```typescript
-container.querySelector('[data-action="import-file"]')?.addEventListener('click', () => {
-  void controller.importFromFile()
-})
-```
-
-### Type System
-Canonical types in `src/types/index.ts`:
-- `PropertyDefinition` - Property schema (name, type, cardinality)
-- `ClassDefinition` - Class schema (name, parent, properties)
-- `ImportPreview` - Diff result before import
-- `Conflict` - Detected conflicts during import
-
-Property types: `'default' | 'number' | 'date' | 'datetime' | 'checkbox' | 'url' | 'page' | 'node'`
-
-### Error Handling Pattern
-```typescript
-try {
-  // operation
-} catch (error) {
-  const message = error instanceof Error ? error.message : 'Unknown error'
-  logger.error('Operation failed', error)
-  await showMessage(`Operation failed: ${message}`, 'error')
-}
-```
-
-## Testing
-
-Tests use Bun's test runner with mocked Logseq API:
-```typescript
-import { describe, test, expect, beforeEach, mock } from 'bun:test'
-
-// Mock setup in tests typically includes:
-globalThis.logseq = { /* mock methods */ }
-```
-
-Key test files:
-- `tests/api.test.ts` - Ontology API operations
-- `tests/import.test.ts` - Import and diff logic
-- `tests/sync.test.ts` - Sync engine operations
-- `tests/parser.test.ts` - EDN parsing
-
-## Default Marketplace
-
-Templates are fetched from the latest release of:
-`https://github.com/C0ntr0lledCha0s/logseq-template-graph/releases`
-
-Available template categories:
-- `content` - Content management templates
-- `crm` - CRM/contact templates
-- `events` - Event management templates
-- `research` - Research/notes templates
-- `full` - Complete template set
-
-## Important Notes
-
-### DB Graph Specifics
-
-1. **Plugin Ownership Restrictions**: In DB mode, Logseq enforces plugin ownership - a plugin can only modify properties/classes it created. Attempting to modify entities created by other plugins or manually by the user will fail with "Plugins can only upsert its own properties". The importer handles this gracefully by skipping such entities.
-
-2. **Name Normalization**: Logseq normalizes all property and class names to lowercase with hyphens replacing spaces (e.g., "First Name" → "first-name"). The diff and import logic accounts for this with case-insensitive matching.
-
-3. **Native Export Format**: Logseq DB graphs export ontology using tagged EDN with namespace reader macros (e.g., `#:user.property{...}`). The importer auto-detects and parses both this native format and simplified template format.
-
-### General Plugin Notes
-
-4. **Browser Environment**: Plugin runs in Logseq's sandboxed iframe. Some browser APIs like `window.prompt()` may not work - use Logseq's native UI methods instead.
-
-5. **No Persistent Storage**: `SourceRegistry` is currently in-memory only. Consider using `logseq.settings` for persistence.
-
-6. **Transactions**: Logseq's transaction API is not truly atomic. The code uses batch operations with manual error handling.
-
-7. **fs/promises Warning**: The `SourceFetcher` dynamically imports `fs/promises` for Node/Bun environments. This shows a Vite warning during build but is intentional.
-
-### Native EDN Import Research (Feb 2025)
-
-8. **Native Import vs Plugin API**: Logseq's native "Import > EDN to DB Graph" creates entities in the `user.*` namespace, while plugin API creates entities in `plugin.property.{plugin-name}/*` namespace. Plugins can READ all entities but can only MODIFY entities in their own namespace.
-
-9. **Undocumented `importEdn` API**: `logseq.Editor.importEdn()` exists at runtime but is a non-functional stub. It returns `null` but creates no entities. The native import uses internal ClojureScript handlers not exposed to plugins.
-
-10. **Hybrid Workflow Option**: For user-owned entities, a hybrid approach is viable: plugin prepares EDN file, user imports via native menu. See `docs/plugin/native-edn-import-research.md` for full details.
-
-## Documentation
-
-- `docs/plugin/architecture.md` - Plugin system architecture
-- `docs/plugin/api-spec.md` - API specifications
-- `docs/plugin/technical-spec.md` - Technical specifications
-- `docs/plugin/native-edn-import-research.md` - Native EDN import research
-- `docs/plugin/edn-parser-analysis.md` - EDN parser analysis
-- `docs/examples/crm-test-minimal.edn` - Minimal test EDN file for native import
-
-## Related Issues
-
-- Issue #24: Import from URL or file (implemented)
+Do not run `bun run deploy` (copies to a Windows folder).

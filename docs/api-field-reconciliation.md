@@ -1,3 +1,5 @@
+> **Historical:** this describes the old API-create approach, which has been removed. The plugin now exports EDN for Logseq's own importer; see `native-edn-import-research.md`.
+
 # Logseq Plugin API Field Reconciliation
 
 This document compares fields available in Logseq's native EDN export format versus what can be set through the Plugin API. It is intended to support a feature request for improved API parity, enabling plugins to fully import/export ontology definitions.

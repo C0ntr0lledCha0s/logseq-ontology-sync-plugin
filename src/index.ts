@@ -2,7 +2,6 @@ import '@logseq/libs'
 import { logger } from './utils/logger'
 import { PluginController } from './plugin-controller'
 import { settingsSchema } from './settings'
-import { registerConfirmDialogHandlers, registerProgressDialogHandlers } from './ui/components'
 
 const pluginId = 'logseq-ontology-sync'
 
@@ -66,59 +65,6 @@ function main(): void {
   // Initialize the plugin controller
   const controller = new PluginController()
   controller.initializeUI()
-
-  // Register dialog handlers (must be called before showing dialogs)
-  registerConfirmDialogHandlers()
-  registerProgressDialogHandlers()
-
-  // Provide model for UI event handlers
-  logseq.provideModel({
-    // Panel controls
-    showPanel: () => void controller.showPanel(),
-    closePanel: () => controller.closePanel(),
-
-    // Actions
-    importFromFile: () => void controller.importFromFile(),
-    exportTemplate: () => void controller.exportTemplate(),
-    refreshMarketplace: () => void controller.refreshMarketplace(),
-    openSettings: () => controller.openSettings(),
-
-    // Template import
-    importTemplate: (e: { dataset: { url: string; name: string } }) => {
-      void controller.importTemplate(e.dataset.url, e.dataset.name)
-    },
-  })
-
-  // Register UI icon in toolbar - opens main panel
-  logseq.App.registerUIItem('toolbar', {
-    key: pluginId,
-    template: `<a class="button" data-on-click="showPanel" title="Ontology Sync"><i class="ti ti-building-arch"></i></a>`,
-  })
-
-  // Register command palette commands
-  logseq.App.registerCommandPalette(
-    { key: 'open-panel', label: 'Ontology: Open Panel' },
-    () => void controller.showPanel()
-  )
-
-  logseq.App.registerCommandPalette(
-    { key: 'import-file', label: 'Ontology: Import from File' },
-    () => void controller.importFromFile()
-  )
-
-  logseq.App.registerCommandPalette(
-    { key: 'export', label: 'Ontology: Export Template' },
-    () => void controller.exportTemplate()
-  )
-
-  logseq.App.registerCommandPalette(
-    { key: 'sync', label: 'Ontology: Sync from Sources' },
-    () => void controller.handleSync()
-  )
-
-  logseq.App.registerCommandPalette({ key: 'settings', label: 'Ontology: Open Settings' }, () =>
-    controller.openSettings()
-  )
 
   // Clean up on plugin unload
   logseq.beforeunload(async () => {

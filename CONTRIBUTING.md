@@ -93,7 +93,7 @@ Types:
 
 Example:
 ```
-feat(parser): add support for nested EDN structures
+feat(edn): add support for nested EDN structures
 
 Implemented recursive parsing for deeply nested EDN data structures.
 This enables handling of complex ontology templates.
@@ -115,9 +115,11 @@ Closes #42
 ```
 src/
 ├── index.ts           # Plugin entry point
-├── api/               # Logseq API wrappers
-├── parser/            # EDN parsing logic
-├── ui/                # UI components
+├── edn/               # EDN reader/writer
+├── library/           # Release fetch + cache, parsing
+├── role/              # Selection, export, conflicts, role files
+├── logseq/            # Logseq adapters (role store, live graph, download)
+├── ui/builder/        # View model, rendering, controller
 └── utils/             # Utility functions
 ```
 

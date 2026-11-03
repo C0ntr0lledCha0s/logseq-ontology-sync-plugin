@@ -1,15 +1,38 @@
-# Logseq Ontology Sync Plugin
+# Ontology Role Builder
 
-A Logseq plugin for managing and synchronizing ontology templates. This plugin enables importing EDN template files, managing ontology structures, and keeping your knowledge graph organized.
+Compose Schema.org roles for Logseq DB graphs from presets, trim them class by class and property by property, and export a trimmed `:graph-ontology` EDN that Logseq imports natively.
 
-## Features
+**Requirements:** Logseq DB graph, desktop 2.0.x (file-based graphs are not supported). See the [changelog](CHANGELOG.md).
 
-- Import ontology templates from EDN files
-- Export current ontology structure
-- Conflict detection and resolution
-- Preview changes before importing
-- Dry-run mode for safe testing
-- Comprehensive logging and error handling
+## What it does
+
+Ontology Role Builder is a **role builder** for Logseq DB graphs (desktop 2.0.x; file-based graphs are not supported). It loads the Schema.org library and role presets published with the latest [logseq-template-graph](https://github.com/C0ntr0lledCha0s/logseq-template-graph) release, lets you compose a role from one or more presets, trim it down class by class and property by property, and exports a trimmed `:graph-ontology` EDN file that you import with Logseq's own importer.
+
+The plugin never creates classes or properties through the plugin API. Logseq does the import itself.
+
+## Using it
+
+Click the toolbar icon or run **Ontology: Open role builder** from the Command Palette.
+
+1. **Library.** On first use the plugin resolves the latest release tag of `C0ntr0lledCha0s/logseq-template-graph` (v2.0.0 or later) and downloads `library/schema-library.edn` and `library/schema-presets.edn` from that tag and caches them. It does not refetch on its own. Use **Update library** when you want the newest release.
+2. **Pick presets.** Tick one or more presets. The selection is the union of all ticked presets.
+3. **Trim.** Remove classes, and remove properties per class. Tags show where each item came from (which preset, or added by you).
+4. **Save the role.** Roles are stored on a hidden page named "Ontology Roles" in your graph.
+5. **Share roles.** Export a role as a JSON file (format `ontology-role`, version 1) and import it into another graph.
+6. **Export EDN.** The plugin writes a trimmed `:graph-ontology` EDN file to your Downloads folder.
+7. **Import into Logseq.** In Logseq choose **Import -> EDN to DB Graph** and select the file.
+
+Idents in the library follow `:schema.class/*` and `:schema.property/*`; your own additions use `:custom.*`.
+
+### Conflict check
+
+Before exporting, the plugin compares the role's properties with the live graph. If a property already exists with a different type or cardinality, export is blocked and the clashes are listed. Resolve them in Logseq, then export again.
+
+### Limitations
+
+- **Re-import is additive.** Importing again never removes anything. If you trim a role after importing it, the removed classes and properties stay in the graph until you delete them by hand in Logseq. The plugin shows this warning when you export after switching off items that were previously exported.
+- DB graphs only, desktop Logseq 2.0.x.
+- The library comes from a GitHub release, so the first load needs network access.
 
 ## Development
 
@@ -78,10 +101,13 @@ logseq-ontology-sync-plugin/
 │   └── workflows/       # GitHub Actions CI/CD
 ├── src/
 │   ├── index.ts         # Plugin entry point
-│   ├── api/             # Logseq API wrappers
-│   ├── parser/          # EDN parsing logic
-│   ├── ui/              # UI components
-│   └── utils/           # Utility functions
+│   ├── edn/             # EDN reader/writer
+│   ├── library/         # Release fetch + cache, library/preset parsing
+│   ├── role/            # Selection, export, conflicts, role files
+│   ├── logseq/          # Role store, live-graph reads, download
+│   ├── ui/builder/      # View model, rendering, controller
+│   ├── plugin-controller.ts # Toolbar button, command
+│   └── utils/           # Logger
 ├── tests/               # Test files
 ├── dist/                # Build output (generated)
 ├── index.html           # Plugin HTML entry
@@ -121,7 +147,7 @@ Tests are written using Bun's built-in test runner:
 bun test
 
 # Run specific test file
-bun test tests/parser.test.ts
+bun test tests/selection.test.ts
 
 # Run with coverage report
 bun run test:coverage
@@ -155,15 +181,6 @@ GitHub Actions automatically runs on push and pull requests:
 - Unit tests with Bun
 - Build validation
 
-## Usage
-
-Once installed in Logseq:
-
-1. Click the ontology sync icon in the toolbar
-2. Use Command Palette (Cmd/Ctrl+Shift+P):
-   - "Import Ontology Template" - Import from EDN file
-   - "Export Ontology Template" - Export current structure
-
 ## Contributing
 
 Contributions are welcome! Please follow these steps:
@@ -183,8 +200,6 @@ MIT License - see LICENSE file for details
 ## Related Issues
 
 - [Issue #7](https://github.com/C0ntr0lledCha0s/logseq-template-graph/issues/7) - Plugin Scaffolding
-- [Issue #5](https://github.com/C0ntr0lledCha0s/logseq-template-graph/issues/5) - EDN Parser Requirements
-- [Issue #10](https://github.com/C0ntr0lledCha0s/logseq-template-graph/issues/10) - Basic Import Functionality
 
 ## Support
 
