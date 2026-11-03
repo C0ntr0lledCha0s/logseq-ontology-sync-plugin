@@ -1,7 +1,7 @@
 # PM Library, Multi-Library Roles and Starter Views: Design
 
 **Date:** 2026-10-22
-**Status:** Approved in brainstorming; awaiting final review
+**Status:** Superseded (2026-11-03). PM shipped in the shared schema library instead: `custom.*` idents in `source/project-management/`, the `project-management` preset, and `views/project-management.edn` (logseq-template-graph#35). Built-in parents in the role builder were fixed in #29. Kept for reference; not planned.
 **Repos affected:** `logseq-template-graph` (library side) and `logseq-ontology-sync-plugin` (builder side)
 **Builds on:** `2026-10-21-role-builder-design.md` (the role builder) and template-graph v2.0.0 (the schema library)
 
