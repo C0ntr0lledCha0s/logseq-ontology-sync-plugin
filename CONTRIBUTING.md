@@ -103,7 +103,7 @@ Closes #42
 
 ## Pull Request Process
 
-1. Update the README.md with details of changes if needed
+1. Update README.md for user-facing changes and DEVELOPMENT.md for developer-facing ones
 2. Add tests for new functionality
 3. Ensure all tests pass and code is linted
 4. Update documentation as needed
