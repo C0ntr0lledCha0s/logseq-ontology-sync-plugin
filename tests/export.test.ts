@@ -45,6 +45,19 @@ describe('export', () => {
     expect(keys(section(edn, 'classes'))).toEqual(['schema.class/Thing', 'schema.class/Person'])
   })
 
+  test('built-in-parent-kept-but-not-exported', () => {
+    const pm = parseLibrary(
+      '{:schema-library/version "1" :properties {} :classes {:custom.class/PMItem {:block/title "PM Item"} :custom.class/WorkItem {:block/title "Work Item" :build/class-extends [:custom.class/PMItem :logseq.class/Task]}}}',
+    )
+    const { edn } = buildExport(pm, computeSelection(pm, [], role({ classOverrides: { 'custom.class/WorkItem': 'on' } })))
+    const classes = section(edn, 'classes')
+    expect(keys(classes).sort()).toEqual(['custom.class/PMItem', 'custom.class/WorkItem'])
+    expect(mapGet(classes.get(kw('custom.class/WorkItem')) as EdnMap, 'build/class-extends')).toEqual([
+      kw('custom.class/PMItem'),
+      kw('logseq.class/Task'),
+    ])
+  })
+
   test('build-properties-keys-pulled-in', () => {
     const { edn } = build({ classOverrides: { 'schema.class/Event': 'on' } })
     expect(keys(section(edn, 'properties'))).toContain('schema.property/url')

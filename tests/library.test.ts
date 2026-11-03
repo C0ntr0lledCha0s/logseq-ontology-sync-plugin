@@ -44,6 +44,20 @@ describe('library', () => {
     expect(ancestors(cyc, 'a/A')).toEqual(['a/B', 'a/C', 'a/D'])
   })
 
+  test('ancestors-skip-logseq-built-ins', () => {
+    const pm = parseLibrary(
+      '{:schema-library/version "1" :properties {} :classes {:custom.class/PMItem {:block/title "PM Item"} :custom.class/WorkItem {:block/title "Work Item" :build/class-extends [:custom.class/PMItem :logseq.class/Task]} :custom.class/Epic {:block/title "Epic" :build/class-extends [:custom.class/WorkItem]}}}',
+    )
+    expect(ancestors(pm, 'custom.class/Epic')).toEqual(['custom.class/WorkItem', 'custom.class/PMItem'])
+  })
+
+  test('ancestors-unknown-library-class-throws', () => {
+    const broken = parseLibrary(
+      '{:schema-library/version "1" :properties {} :classes {:a/A {:block/title "A" :build/class-extends [:a/Missing]}}}',
+    )
+    expect(() => ancestors(broken, 'a/A')).toThrow('a/Missing: unknown class')
+  })
+
   test('parses-presets', () => {
     const { version, presets } = parsePresets(read('presets.edn'))
     expect(version).toBe('2.0.0')

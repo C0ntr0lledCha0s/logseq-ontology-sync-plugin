@@ -119,7 +119,13 @@ export function parsePresets(text: string): { version: string; presets: Preset[]
   return { version, presets: list.map(parsePreset) }
 }
 
-/** All ancestors, breadth-first (nearest first), deduplicated, cycle-safe. */
+/** Logseq built-ins such as `logseq.class/Task` exist in every graph, so a library may extend them. */
+const isBuiltIn = (ident: Ident): boolean => ident.startsWith('logseq.')
+
+/**
+ * All library ancestors, breadth-first (nearest first), deduplicated, cycle-safe.
+ * Built-in parents are skipped: they are never exported but stay in the class's raw `:build/class-extends`.
+ */
 export function ancestors(lib: Library, cls: Ident): Ident[] {
   const seen = new Set<Ident>([cls])
   const out: Ident[] = []
@@ -130,7 +136,7 @@ export function ancestors(lib: Library, cls: Ident): Ident[] {
       const def = lib.classes.get(ident)
       if (!def) throw new Error(`${ident}: unknown class`)
       for (const p of def.parents) {
-        if (seen.has(p)) continue
+        if (seen.has(p) || isBuiltIn(p)) continue
         seen.add(p)
         out.push(p)
         next.push(p)
