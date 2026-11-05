@@ -136,7 +136,7 @@ describe('selection', () => {
       })
     )
     expect(sel.missing).toContain('schema.class/Gone')
-    expect(sel.missing).toContain('preset:nope')
+    expect(sel.missing).toContain('role:nope')
     expect(sel.missing).toContain('schema.class/Person|schema.property/legalName')
     expect(sel.classes.has('schema.class/Gone')).toBe(false)
     expect(new Set(sel.missing).size).toBe(sel.missing.length)

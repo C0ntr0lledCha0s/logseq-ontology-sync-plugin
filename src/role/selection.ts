@@ -19,7 +19,7 @@ export function computeSelection(lib: Library, presets: Preset[], role: RoleDefi
   for (const id of role.presets) {
     const preset = presets.find((p) => p.id === id)
     if (preset) selected.push(preset)
-    else missing.add(`preset:${id}`)
+    else missing.add(`role:${id}`)
   }
 
   // Direct inclusion: preset-listed classes, then class overrides.

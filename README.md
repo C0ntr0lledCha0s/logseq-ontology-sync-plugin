@@ -1,6 +1,6 @@
-# Ontology Role Builder
+# Ontology Schema Builder
 
-Set up classes and properties in your Logseq DB graph without building them by hand. Choose from ready-made Schema.org presets, keep only what you need, and import the result with Logseq's own importer.
+Set up classes and properties in your Logseq DB graph without building them by hand. Start from ready-made Schema.org roles such as CRM or Project Management, keep only what you need, and import the result with Logseq's own importer.
 
 **Works with:** Logseq desktop 2.0.x and DB graphs. File-based (markdown) graphs are not supported.
 
@@ -10,31 +10,32 @@ Set up classes and properties in your Logseq DB graph without building them by h
 2. Unzip it.
 3. In Logseq, open **Settings -> Plugins**, turn on **Developer mode**, click **Load unpacked plugin**, and select the unzipped `logseq-ontology-sync-plugin` folder.
 
-## Build a role
+## Build a schema
 
-A *role* is the set of classes and properties you want in your graph, for example everything a CRM or project-management setup needs.
+A *role* is a ready-made set of classes and properties for one job or area of your life, such as CRM, Project Management, Events or Research. A *schema* is what you build from one or more roles: the classes and properties you want in your graph.
 
-Open the builder from the toolbar icon, or run **Ontology: Open role builder** from the Command Palette.
+Open the builder from the toolbar icon, or run **Ontology: Open schema builder** from the Command Palette.
 
-1. **Create a role.** Choose **New role…** from the role picker and give it a name.
-2. **Start from presets.** Click one or more preset chips. Your role gets everything from every preset you pick.
-3. **Trim it.** Untick the classes you don't want, and the properties you don't want on each class. Use **+ add class…** to add a class that isn't in your presets. Labels show where each item came from: a preset, or added by you.
-4. **Save role.** Your roles are saved in the graph, so you can come back and change them later.
+1. **Create a schema.** Choose **New schema…** from the schema picker and give it a name.
+2. **Start from roles.** Click one or more role chips. Your schema gets everything from every role you pick.
+3. **Trim it.** Untick the classes you don't want, and the properties you don't want on each class. Use **+ add class…** to add a class that isn't in your roles. Labels show where each item came from: a role, or added by you.
+4. **Save schema.** Your schemas are saved in the graph, so you can come back and change them later.
 5. **Export EDN.** The plugin saves an `.edn` file to your Downloads folder.
 6. **Import it.** In Logseq choose **Import -> EDN to DB Graph** and select that file.
 
-## Share a role
+## Share a schema
 
-Click **Export role file** to save the role as a `.json` file. In another graph, click **Import role file** to load it.
+Click **Export schema file** to save the schema as a `.json` file. In another graph, click **Import schema file** to load it. Files exported as roles by earlier versions still import.
 
 ## Before you export: conflicts
 
-The plugin checks your role against the properties already in your graph. If a property exists with a different type, or allows one value where the role allows many (or the other way around), export is blocked and the clashes are listed. Change the property in Logseq, or untick it in the role, then export again.
+The plugin checks your schema against the properties already in your graph. If a property exists with a different type, or allows one value where the schema allows many (or the other way around), export is blocked and the clashes are listed. Change the property in Logseq, or untick it in the schema, then export again.
 
 ## Things to know
 
-- **Importing never removes anything.** If you untick items after you've already imported a role, importing again won't delete them. Remove them by hand in Logseq. The plugin warns you when this applies.
-- **The preset library is downloaded from GitHub.** The first time you open the builder it needs an internet connection. After that it uses a saved copy. Click **Update library** to get the newest presets. The button highlights when a newer version is available.
+- **Importing never removes anything.** If you untick items after you've already imported a schema, importing again won't delete them. Remove them by hand in Logseq. The plugin warns you when this applies.
+- **The schema library is downloaded from GitHub.** The first time you open the builder it needs an internet connection. After that it uses a saved copy. Click **Update library** to get the newest roles. The button highlights when a newer version is available.
+- **Upgrading from the role builder.** Earlier versions called a schema a *role*. Your saved roles appear as schemas, and each moves to the new hidden *Ontology Schemas* page the next time you save it.
 - **Nothing changes until you import.** The plugin only writes files. Your classes and properties change only when you import the EDN file in Logseq.
 
 ## Help and feedback

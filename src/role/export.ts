@@ -137,5 +137,5 @@ export function exportFileName(roleName: string): string {
     .toLowerCase()
     .replace(/ /g, '-')
     .replace(/[^a-z0-9-]/g, '')
-  return `${base === '' ? 'role' : base}.edn`
+  return `${base === '' ? 'schema' : base}.edn`
 }

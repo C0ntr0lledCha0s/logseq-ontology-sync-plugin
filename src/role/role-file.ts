@@ -1,11 +1,13 @@
 import type { StoredRole } from '../logseq/role-store'
 import type { RoleDefinition } from './types'
 
-const FORMAT = 'ontology-role'
+const FORMAT = 'ontology-schema'
+/** Files exported before the rename to schemas: `{format: 'ontology-role', role}`. */
+const LEGACY_FORMAT = 'ontology-role'
 const VERSION = 1
-const NOT_A_ROLE = 'Not an ontology role file'
+const NOT_A_ROLE = 'Not an ontology schema file'
 
-/** Serialise a role for sharing. `lastExport` is per-graph state and is left out. */
+/** Serialise a schema for sharing. `lastExport` is per-graph state and is left out. */
 export function roleToFile(role: StoredRole): string {
   const { name, libraryVersion, presets, classOverrides, propertyOverrides } = role
   const definition: RoleDefinition = {
@@ -15,7 +17,7 @@ export function roleToFile(role: StoredRole): string {
     classOverrides,
     propertyOverrides,
   }
-  return JSON.stringify({ format: FORMAT, version: VERSION, role: definition }, null, 2)
+  return JSON.stringify({ format: FORMAT, version: VERSION, schema: definition }, null, 2)
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -26,17 +28,17 @@ function isOverrideMap(v: unknown): v is Record<string, 'on' | 'off'> {
   return isRecord(v) && Object.values(v).every((x) => x === 'on' || x === 'off')
 }
 
-/** Why `name` cannot be a role name, or null when it is fine. */
+/** Why `name` cannot be a schema name, or null when it is fine. */
 export function roleNameError(name: string): string | null {
-  if (name.trim() === '') return 'Enter a name for the role'
-  if (name === '__new__') return 'The role name "__new__" is reserved'
+  if (name.trim() === '') return 'Enter a name for the schema'
+  if (name === '__new__') return 'The schema name "__new__" is reserved'
   if (name.includes('#') || name.includes('[[') || name.includes(']]')) {
-    return 'A role name cannot contain "#", "[[" or "]]"'
+    return 'A schema name cannot contain "#", "[[" or "]]"'
   }
   return null
 }
 
-/** Validates the shape and name of a role definition; throws with a specific message. */
+/** Validates the shape and name of a schema definition; throws with a specific message. */
 export function parseRoleDefinition(r: unknown): RoleDefinition {
   if (
     !isRecord(r) ||
@@ -67,8 +69,8 @@ export function roleFromFile(text: string): RoleDefinition {
   } catch {
     throw new Error(NOT_A_ROLE)
   }
-  if (!isRecord(data) || data.format !== FORMAT || data.version !== VERSION) {
-    throw new Error(NOT_A_ROLE)
-  }
-  return parseRoleDefinition(data.role)
+  if (!isRecord(data) || data.version !== VERSION) throw new Error(NOT_A_ROLE)
+  if (data.format === FORMAT) return parseRoleDefinition(data.schema)
+  if (data.format === LEGACY_FORMAT) return parseRoleDefinition(data.role)
+  throw new Error(NOT_A_ROLE)
 }

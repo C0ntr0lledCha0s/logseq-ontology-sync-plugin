@@ -127,3 +127,63 @@ describe('BuilderController graph handling', () => {
     expect(priv(h.controller).role?.lastExport).toEqual(lastExport)
   })
 })
+
+describe('BuilderController render failures', () => {
+  const g = globalThis as { document?: unknown }
+  const before = g.document
+  beforeAll(() => {
+    g.document = { addEventListener: () => {}, activeElement: null }
+  })
+  afterAll(() => {
+    g.document = before
+  })
+
+  type Internals = {
+    role: StoredRole | null
+    dirty: boolean
+    library: { classes: Map<string, { parents: string[] }> }
+    presets: { id: string; classes: Map<string, string[]> }[]
+    onAction(action: string, el: { dataset: Record<string, string> }): Promise<void>
+    openRole(name: string): void
+  }
+  const internals = (c: BuilderController) => c as unknown as Internals
+
+  /** Gives a class in the CRM preset a parent the library lacks, so drawing CRM throws. */
+  const breakCrm = (c: BuilderController): void => {
+    const lib = internals(c).library
+    const crm = internals(c).presets.find((p) => p.id === 'crm')!
+    const cls = [...crm.classes.keys()].find((k) => lib.classes.has(k))!
+    lib.classes.get(cls)!.parents.push('custom.class/Missing')
+  }
+
+  test('a change that cannot be drawn is undone and reported', async () => {
+    const h = harness()
+    h.graphs.g1!.push({ uuid: 'a', content: JSON.stringify(stored('Alpha')) })
+    await h.controller.open()
+    breakCrm(h.controller)
+
+    await internals(h.controller).onAction('toggle-preset', { dataset: { id: 'crm' } })
+
+    expect(internals(h.controller).role?.presets).toEqual([])
+    expect(internals(h.controller).dirty).toBe(false)
+    expect(h.root.innerHTML).toContain('could not be shown, so it was undone')
+    expect(h.root.innerHTML).toContain('custom.class/Missing: unknown class')
+    expect(h.root.innerHTML).toContain('data-action="toggle-preset"')
+  })
+
+  test('a role that cannot be drawn shows the error with a way out', async () => {
+    const h = harness()
+    h.graphs.g1!.push({ uuid: 'a', content: JSON.stringify(stored('Alpha')) })
+    h.graphs.g1!.push({
+      uuid: 'b',
+      content: JSON.stringify(stored('Broken', { presets: ['crm'] })),
+    })
+    await h.controller.open()
+    breakCrm(h.controller)
+
+    internals(h.controller).openRole('Broken')
+
+    expect(h.root.innerHTML).toContain('custom.class/Missing: unknown class')
+    expect(h.root.innerHTML).toContain('data-action="close"')
+  })
+})

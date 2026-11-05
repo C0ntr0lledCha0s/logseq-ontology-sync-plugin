@@ -1,7 +1,7 @@
 {
   "name": "logseq-ontology-sync-plugin",
   "version": "0.2.0",
-  "description": "Logseq DB role builder: compose Schema.org roles from presets, trim them, and export a graph-ontology EDN for import",
+  "description": "Logseq DB schema builder: compose a Schema.org schema from roles such as CRM or Project Management, trim it, and export a graph-ontology EDN for import",
   "repo": "C0ntr0lledCha0s/logseq-ontology-sync-plugin",
   "repository": {
     "type": "git",
@@ -14,7 +14,7 @@
     "ontology",
     "schema.org",
     "db-graph",
-    "role-builder"
+    "schema-builder"
   ],
   "author": "C0ntr0lledCha0s",
   "license": "MIT",
@@ -22,7 +22,7 @@
   "main": "index.html",
   "logseq": {
     "id": "logseq-ontology-sync",
-    "title": "Ontology Role Builder",
+    "title": "Ontology Schema Builder",
     "icon": "./icon.svg"
   },
   "scripts": {

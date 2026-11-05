@@ -25,11 +25,11 @@ export class PluginController {
 
     logseq.App.registerUIItem('toolbar', {
       key: PLUGIN_ID,
-      template: `<a class="button" data-on-click="openBuilder" title="Ontology role builder"><i class="ti ti-building-arch"></i></a>`,
+      template: `<a class="button" data-on-click="openBuilder" title="Ontology schema builder"><i class="ti ti-building-arch"></i></a>`,
     })
 
     logseq.App.registerCommandPalette(
-      { key: 'open-role-builder', label: 'Ontology: Open role builder' },
+      { key: 'open-role-builder', label: 'Ontology: Open schema builder' },
       () => void this.openBuilder()
     )
 
