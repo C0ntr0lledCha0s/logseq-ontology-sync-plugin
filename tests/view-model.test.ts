@@ -160,6 +160,6 @@ describe('view model', () => {
 
   test('notices-report-missing', () => {
     const vm = vmFor(role({ presets: ['nope'] }))
-    expect(vm.notices).toEqual(['Not in the library: preset:nope'])
+    expect(vm.notices).toEqual(['Not in the library: role:nope'])
   })
 })

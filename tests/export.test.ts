@@ -95,7 +95,7 @@ describe('export', () => {
 
   test('file-name', () => {
     expect(exportFileName('Client Work!')).toBe('client-work.edn')
-    expect(exportFileName('!!!')).toBe('role.edn')
+    expect(exportFileName('!!!')).toBe('schema.edn')
   })
 
   test('snapshot', () => {

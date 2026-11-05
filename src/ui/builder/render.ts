@@ -149,7 +149,7 @@ function renderRow(cls: string, row: RowVM): string {
   const note = row.offByYou ? ' · <em>switched off by you</em>' : ''
   const link = row.linksToAnyPage ? ' · <em>will link to any page (targets not selected)</em>' : ''
   const middle = row.notInPreset
-    ? '<span class="rb-count">not in a selected preset</span>'
+    ? '<span class="rb-count">not in a selected role</span>'
     : row.tags.map(renderTag).join(' ')
   return `<tr class="${row.on ? '' : 'rb-row-off'}">
     <td><label><input type="checkbox" data-change="toggle-prop" data-class="${escapeHtml(cls)}" data-prop="${escapeHtml(row.ident)}"${row.on ? ' checked' : ''}> ${escapeHtml(row.title)}</label></td>
@@ -183,11 +183,11 @@ function renderHeader(chrome: ChromeVM, summary: string): string {
         `<option value="${escapeHtml(n)}"${n === chrome.roleName ? ' selected' : ''}>${escapeHtml(n)}</option>`
     )
     .join('')
-  const picker = `<select data-change="switch-role" title="Saved roles in this graph">
-      ${chrome.roleName === null ? '<option value="" selected>Choose a role…</option>' : ''}${options}
-      <option value="__new__">New role…</option></select>`
+  const picker = `<select data-change="switch-role" title="Saved schemas in this graph">
+      ${chrome.roleName === null ? '<option value="" selected>Choose a schema…</option>' : ''}${options}
+      <option value="__new__">New schema…</option></select>`
   const newRole = chrome.creatingRole
-    ? `<span><input type="text" id="rb-new-role" data-enter="create-role" placeholder="Role name" autocomplete="off">
+    ? `<span><input type="text" id="rb-new-role" data-enter="create-role" placeholder="Schema name" autocomplete="off">
         <button type="button" data-action="create-role">Create</button>
         <button type="button" data-action="cancel-new-role">Cancel</button></span>`
     : ''
@@ -195,7 +195,7 @@ function renderHeader(chrome: ChromeVM, summary: string): string {
     ? `<button type="button" class="rb-primary" data-action="update-library">Update library to ${escapeHtml(chrome.updateTag)}</button>`
     : `<button type="button" data-action="update-library" title="Fetch the latest schema library">Update library</button>`
   return `<div class="rb-head">
-    <h2>Role builder</h2>${picker}${newRole}
+    <h2>Schema builder</h2>${picker}${newRole}
     <span class="rb-muted">${escapeHtml(summary)}${chrome.dirty ? ' · unsaved changes' : ''}</span>
     <span class="rb-spacer"></span>
     <span class="rb-muted">Library ${escapeHtml(chrome.libraryVersion)}</span>${update}
@@ -209,10 +209,10 @@ function renderHeader(chrome: ChromeVM, summary: string): string {
 function renderFooter(canAct: boolean): string {
   const dis = canAct ? '' : ' disabled'
   return `<div class="rb-footer">
-    <button type="button" data-action="import-role">Import role file</button>
+    <button type="button" data-action="import-role">Import schema file</button>
     <input type="file" accept=".json" data-change="import-file" hidden>
-    <button type="button" data-action="export-role"${dis}>Export role file</button>
-    <button type="button" data-action="save"${dis}>Save role</button>
+    <button type="button" data-action="export-role"${dis}>Export schema file</button>
+    <button type="button" data-action="save"${dis}>Save schema</button>
     <button type="button" class="rb-primary" data-action="export"${dis}>Export EDN ⬇</button>
   </div>`
 }
@@ -241,13 +241,13 @@ export function renderBuilder(vm: BuilderVM, chrome: ChromeVM): string {
       ? `<div class="rb-notices">${vm.notices.map((n) => `<div>${escapeHtml(n)}</div>`).join('')}</div>`
       : ''
   return wrap(`${renderHeader(chrome, summary)}
-    <div class="rb-presets"><span class="rb-label">Start from presets</span> ${chips}
+    <div class="rb-presets"><span class="rb-label">Start from roles</span> ${chips}
       <span class="rb-combo"><input type="text" id="rb-add-class" role="combobox" aria-expanded="${chrome.addClass.open}" aria-controls="rb-combo-pop" placeholder="+ add class…" style="width:170px" autocomplete="off" value="${escapeHtml(chrome.addClass.query)}"><div class="rb-combo-pop" id="rb-combo-pop">${renderComboList(chrome.addClass)}</div></span>
       <button type="button" data-action="add-class">Add</button></div>
     ${notices}
     <div class="rb-body">
       <div class="rb-toc"><div class="rb-label">Contents</div>${toc}</div>
-      <div class="rb-pane">${vm.sections.length > 0 ? vm.sections.map(renderSection).join('') : '<div class="rb-empty rb-muted">Pick a preset or add a class to start.</div>'}</div>
+      <div class="rb-pane">${vm.sections.length > 0 ? vm.sections.map(renderSection).join('') : '<div class="rb-empty rb-muted">Pick a role or add a class to start.</div>'}</div>
     </div>
     ${renderFooter(true)}`)
 }
@@ -261,10 +261,17 @@ export function renderEmpty(chrome: ChromeVM, message: string): string {
 
 /** Shown when the library cannot be loaded. */
 export function renderLibraryError(message: string, updating: boolean): string {
-  return wrap(`<div class="rb-head"><h2>Role builder</h2><span class="rb-spacer"></span>
+  return wrap(`<div class="rb-head"><h2>Schema builder</h2><span class="rb-spacer"></span>
       <button type="button" data-action="close">Close</button></div>
     <div class="rb-banner rb-error">${escapeHtml(message)}</div>
     <div><button type="button" class="rb-primary" data-action="update-library"${updating ? ' disabled' : ''}>${updating ? 'Updating…' : 'Update library'}</button></div>`)
+}
+
+/** Shown when the open schema cannot be drawn. */
+export function renderFailure(message: string): string {
+  return wrap(`<div class="rb-head"><h2>Schema builder</h2><span class="rb-spacer"></span>
+      <button type="button" data-action="close">Close</button></div>
+    <div class="rb-banner rb-error">The builder could not show this schema: ${escapeHtml(message)}</div>`)
 }
 
 export function renderLoading(): string {

@@ -16,6 +16,7 @@ import {
   renderBuilder,
   renderComboList,
   renderEmpty,
+  renderFailure,
   renderLibraryError,
   renderLoading,
   type ChromeVM,
@@ -149,7 +150,7 @@ export class BuilderController {
     this.error = null
     if (lostEdits) {
       await this.deps.showMsg(
-        'Unsaved changes to a role in the previous graph were discarded.',
+        'Unsaved changes to a schema in the previous graph were discarded.',
         'warning'
       )
     }
@@ -210,7 +211,18 @@ export class BuilderController {
     return this.library
   }
 
+  /** Draws the panel; when drawing fails, shows the error with a way out instead of stale content. */
   private render(): void {
+    try {
+      this.draw()
+    } catch (e) {
+      this.observer?.disconnect()
+      this.observer = null
+      this.root.innerHTML = renderFailure(errorText(e))
+    }
+  }
+
+  private draw(): void {
     const pane = this.root.querySelector<HTMLElement>('.rb-pane')
     const toc = this.root.querySelector<HTMLElement>('.rb-toc')
     const scroll = { pane: pane?.scrollTop ?? 0, toc: toc?.scrollTop ?? 0 }
@@ -232,7 +244,7 @@ export class BuilderController {
     if (!this.role) {
       this.root.innerHTML = renderEmpty(
         chrome,
-        'No role open. Choose "New role…" or import a role file to begin.'
+        'No schema open. Choose "New schema…" or import a schema file to begin.'
       )
       return
     }
@@ -240,7 +252,7 @@ export class BuilderController {
     const vm = toViewModel(library, this.presets, this.role, sel)
     if (this.role.libraryVersion !== library.version) {
       vm.notices.push(
-        `This role was saved against library ${this.role.libraryVersion}; the loaded library is ${library.version}.`
+        `This schema was saved against library ${this.role.libraryVersion}; the loaded library is ${library.version}.`
       )
     }
     vm.notices.push(...this.exportNotes)
@@ -526,14 +538,23 @@ export class BuilderController {
   }
 
   private edit(change: (lib: Library, role: RoleDefinition) => RoleDefinition): void {
-    if (!this.role) throw new Error('No role is open')
+    if (!this.role) throw new Error('No schema is open')
+    const before = { role: this.role, dirty: this.dirty }
     this.role = { ...this.role, ...change(this.requireLibrary(), this.role) }
     this.dirty = true
     this.clearConfirm()
     this.hint = null
     this.error = null
     this.exportNotes = []
-    this.render()
+    try {
+      this.draw()
+    } catch (e) {
+      // Keep the panel usable: drop the change rather than leave a role that cannot be drawn.
+      this.role = before.role
+      this.dirty = before.dirty
+      this.error = `That change could not be shown, so it was undone: ${errorText(e)}`
+      this.render()
+    }
   }
 
   private openRole(name: string): void {
@@ -557,7 +578,7 @@ export class BuilderController {
     this.afterDiscard = next
     this.confirm = {
       title: 'You have unsaved changes',
-      lines: ['Continuing discards the unsaved changes to this role.'],
+      lines: ['Continuing discards the unsaved changes to this schema.'],
       actions: [{ action: 'discard-continue', label: 'Discard and continue' }, CANCEL],
     }
     this.render()
@@ -637,7 +658,7 @@ export class BuilderController {
   }
 
   private async saveRole(): Promise<void> {
-    if (!this.role) throw new Error('No role is open')
+    if (!this.role) throw new Error('No schema is open')
     const library = this.requireLibrary()
     this.role = { ...this.role, libraryVersion: library.version }
     await this.store.save(this.role)
@@ -645,7 +666,7 @@ export class BuilderController {
     this.dirty = false
     this.error = null
     this.render()
-    await this.deps.showMsg(`Saved role "${this.role.name}"`, 'success')
+    await this.deps.showMsg(`Saved schema "${this.role.name}"`, 'success')
   }
 
   private async createRole(): Promise<void> {
@@ -653,7 +674,7 @@ export class BuilderController {
     const name = (this.root.querySelector<HTMLInputElement>('#rb-new-role')?.value ?? '').trim()
     const nameError = roleNameError(name)
     if (nameError) throw new Error(nameError)
-    if (this.roles.some((r) => r.name === name)) throw new Error(`A role named "${name}" exists`)
+    if (this.roles.some((r) => r.name === name)) throw new Error(`A schema named "${name}" exists`)
     await this.guardDirty(async () => {
       const fresh: StoredRole = {
         name,
@@ -671,9 +692,9 @@ export class BuilderController {
   // ---- role files ------------------------------------------------------------------------
 
   private exportRoleFile(): void {
-    if (!this.role) throw new Error('No role is open')
+    if (!this.role) throw new Error('No schema is open')
     const base = exportFileName(this.role.name).replace(/\.edn$/, '')
-    downloadText(`${base}.ontology-role.json`, roleToFile(this.role), 'application/json')
+    downloadText(`${base}.ontology-schema.json`, roleToFile(this.role), 'application/json')
   }
 
   private async importRoleFile(input: HTMLInputElement): Promise<void> {
@@ -685,8 +706,8 @@ export class BuilderController {
       if (this.roles.some((r) => r.name === definition.name)) {
         this.pendingImport = definition
         this.confirm = {
-          title: `A role named "${definition.name}" already exists — replace it?`,
-          lines: ["Replacing keeps this graph's export history for that role."],
+          title: `A schema named "${definition.name}" already exists — replace it?`,
+          lines: ["Replacing keeps this graph's export history for that schema."],
           actions: [{ action: 'import-replace', label: 'Replace' }, CANCEL],
         }
         this.render()
@@ -704,7 +725,7 @@ export class BuilderController {
     await this.store.save(stored)
     await this.reloadRoles()
     this.openRole(definition.name)
-    await this.deps.showMsg(`Imported role "${definition.name}"`, 'success')
+    await this.deps.showMsg(`Imported schema "${definition.name}"`, 'success')
   }
 
   /** Ignores a second activation while an async action is still running. */
@@ -721,7 +742,7 @@ export class BuilderController {
   // ---- EDN export ------------------------------------------------------------------------
 
   private async startExport(): Promise<void> {
-    if (!this.role) throw new Error('No role is open')
+    if (!this.role) throw new Error('No schema is open')
     const library = this.requireLibrary()
     const role = this.role
     const sel = computeSelection(library, this.presets, role)
@@ -734,7 +755,7 @@ export class BuilderController {
           'Export blocked: these properties already exist in the graph with a different type. Logseq would reject the whole import.',
         lines: conflicts.map(
           (c) =>
-            `${library.properties.get(c.ident)?.title ?? c.ident} (${c.ident}): this role exports ${c.exported}, the graph has ${c.graph}`
+            `${library.properties.get(c.ident)?.title ?? c.ident} (${c.ident}): this schema exports ${c.exported}, the graph has ${c.graph}`
         ),
         actions: [{ action: 'confirm-cancel', label: 'Close' }],
       }

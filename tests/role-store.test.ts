@@ -12,39 +12,55 @@ const role = (name: string, v = 'v1'): StoredRole => ({
 
 function fake(opts: { hideFails?: boolean } = {}) {
   const calls = { createPage: [] as unknown[][], upsert: [] as unknown[][] }
-  let page: { uuid: string } | null = null
-  let blocks: { uuid: string; content: string }[] = []
+  const pages = new Map<string, { uuid: string; blocks: { uuid: string; content: string }[] }>()
   let n = 0
+  const owner = (uuid: string) =>
+    [...pages.values()].find((p) => p.blocks.some((b) => b.uuid === uuid))!
   const api = {
     Editor: {
-      getPage: () => Promise.resolve(page),
+      getPage: (name: string) =>
+        Promise.resolve(pages.has(name) ? { uuid: pages.get(name)!.uuid } : null),
       createPage: (...a: unknown[]) => {
         calls.createPage.push(a)
-        page = { uuid: 'page-uuid' }
-        return Promise.resolve(page)
+        const uuid = `page-uuid-${pages.size}`
+        pages.set(a[0] as string, { uuid, blocks: [] })
+        return Promise.resolve({ uuid })
       },
       upsertBlockProperty: (...a: unknown[]) => {
         calls.upsert.push(a)
         return opts.hideFails ? Promise.reject(new Error('nope')) : Promise.resolve()
       },
-      getPageBlocksTree: () => Promise.resolve(blocks),
-      appendBlockInPage: (_p: string, content: string) => {
+      getPageBlocksTree: (name: string) => Promise.resolve(pages.get(name)?.blocks ?? null),
+      appendBlockInPage: (pageUuid: string, content: string) => {
         const b = { uuid: `b${++n}`, content }
-        blocks.push(b)
+        ;[...pages.values()].find((p) => p.uuid === pageUuid)!.blocks.push(b)
         return Promise.resolve(b)
       },
       updateBlock: (uuid: string, content: string) => {
-        blocks = blocks.map((b) => (b.uuid === uuid ? { ...b, content } : b))
+        const p = owner(uuid)
+        p.blocks = p.blocks.map((b) => (b.uuid === uuid ? { ...b, content } : b))
         return Promise.resolve()
       },
       removeBlock: (uuid: string) => {
-        blocks = blocks.filter((b) => b.uuid !== uuid)
+        const p = owner(uuid)
+        p.blocks = p.blocks.filter((b) => b.uuid !== uuid)
         return Promise.resolve()
       },
     },
     DB: { datascriptQuery: () => Promise.resolve([]) },
   } as unknown as LogseqLike
-  return { api, calls, blocks: () => blocks }
+  /** Seeds a page directly, as an older plugin version would have left it. */
+  const seed = (name: string, roles: StoredRole[]) =>
+    pages.set(name, {
+      uuid: `seed-${name}`,
+      blocks: roles.map((r) => ({ uuid: `b${++n}`, content: JSON.stringify(r) })),
+    })
+  return {
+    api,
+    calls,
+    seed,
+    blocks: (name = 'Ontology Schemas') => pages.get(name)?.blocks ?? [],
+  }
 }
 
 describe('RoleStore', () => {
@@ -53,10 +69,10 @@ describe('RoleStore', () => {
     const s = new RoleStore(f.api)
     await s.save(role('A'))
     await s.save(role('B'))
-    expect(f.calls.createPage).toEqual([['Ontology Roles', {}, { redirect: false }]])
+    expect(f.calls.createPage).toEqual([['Ontology Schemas', {}, { redirect: false }]])
     expect(f.calls.upsert).toEqual([
-      ['page-uuid', ':logseq.property/hide?', true],
-      ['page-uuid', ':logseq.property/hide?', true],
+      ['page-uuid-0', ':logseq.property/hide?', true],
+      ['page-uuid-0', ':logseq.property/hide?', true],
     ])
     expect((await s.load()).map((r) => r.name)).toEqual(['A', 'B'])
   })
@@ -98,7 +114,7 @@ describe('RoleStore', () => {
   test('store-hide-failure-throws', async () => {
     const f = fake({ hideFails: true })
     await expect(new RoleStore(f.api).save(role('A'))).rejects.toThrow(
-      'Could not hide the Ontology Roles page: nope'
+      'Could not hide the Ontology Schemas page: nope'
     )
   })
 
@@ -109,13 +125,13 @@ describe('RoleStore', () => {
     f.calls.upsert.length = 0
     await s.save(role('B'))
     expect(f.calls.createPage).toHaveLength(1)
-    expect(f.calls.upsert).toEqual([['page-uuid', ':logseq.property/hide?', true]])
+    expect(f.calls.upsert).toEqual([['page-uuid-0', ':logseq.property/hide?', true]])
     const g = fake()
     await new RoleStore(g.api).save(role('A'))
     ;(g.api.Editor as { upsertBlockProperty: unknown }).upsertBlockProperty = () =>
       Promise.reject(new Error('later'))
     await expect(new RoleStore(g.api).save(role('B'))).rejects.toThrow(
-      'Could not hide the Ontology Roles page: later'
+      'Could not hide the Ontology Schemas page: later'
     )
   })
 
@@ -139,5 +155,44 @@ describe('RoleStore', () => {
     }
     await s.save(withExport)
     expect((await s.load())[0]).toEqual(withExport)
+  })
+
+  test('reads schemas saved on the legacy Ontology Roles page', async () => {
+    const f = fake()
+    f.seed('Ontology Roles', [role('Old')])
+    expect((await new RoleStore(f.api).load()).map((r) => r.name)).toEqual(['Old'])
+    expect(f.calls.createPage).toHaveLength(0)
+  })
+
+  test('a schema on the new page wins over a legacy one with its name', async () => {
+    const f = fake()
+    f.seed('Ontology Roles', [role('A', 'old'), role('B')])
+    f.seed('Ontology Schemas', [role('A', 'new')])
+    const loaded = await new RoleStore(f.api).load()
+    expect(loaded.map((r) => [r.name, r.libraryVersion])).toEqual([
+      ['A', 'new'],
+      ['B', 'v1'],
+    ])
+  })
+
+  test('saving a legacy schema moves it to the new page', async () => {
+    const f = fake()
+    f.seed('Ontology Roles', [role('Old'), role('Other')])
+    const s = new RoleStore(f.api)
+    await s.save(role('Old', 'v2'))
+    expect(f.blocks('Ontology Roles').map((b) => JSON.parse(b.content).name)).toEqual(['Other'])
+    expect(f.blocks().map((b) => JSON.parse(b.content).name)).toEqual(['Old'])
+    expect((await s.load()).map((r) => [r.name, r.libraryVersion])).toEqual([
+      ['Old', 'v2'],
+      ['Other', 'v1'],
+    ])
+  })
+
+  test('remove deletes the schema from both pages', async () => {
+    const f = fake()
+    f.seed('Ontology Roles', [role('A')])
+    f.seed('Ontology Schemas', [role('A')])
+    await new RoleStore(f.api).remove('A')
+    expect(await new RoleStore(f.api).load()).toEqual([])
   })
 })

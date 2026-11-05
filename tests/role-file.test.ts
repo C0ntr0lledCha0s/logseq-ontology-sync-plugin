@@ -19,12 +19,18 @@ describe('role files', () => {
   test('role-file-round-trip', () => {
     const text = roleToFile(role)
     const parsed = JSON.parse(text)
-    expect(parsed.format).toBe('ontology-role')
+    expect(parsed.format).toBe('ontology-schema')
     expect(parsed.version).toBe(1)
-    expect(parsed.role.lastExport).toBeUndefined()
+    expect(parsed.schema.lastExport).toBeUndefined()
     expect(text).toContain('\n  "format"')
     const { lastExport: _omit, ...expected } = role
     expect(roleFromFile(text)).toEqual(expected)
+  })
+
+  test('imports files exported as roles by earlier versions', () => {
+    const { lastExport: _omit, ...definition } = role
+    const legacy = JSON.stringify({ format: 'ontology-role', version: 1, role: definition })
+    expect(roleFromFile(legacy)).toEqual(definition)
   })
 
   test('rejects-bad-role-file', () => {
@@ -33,11 +39,11 @@ describe('role files', () => {
       'not json',
       JSON.stringify({ ...good, format: 'other' }),
       JSON.stringify({ ...good, version: 2 }),
-      JSON.stringify({ ...good, role: { name: 'x' } }),
-      JSON.stringify({ ...good, role: undefined }),
+      JSON.stringify({ ...good, schema: { name: 'x' } }),
+      JSON.stringify({ ...good, schema: undefined }),
     ]
     for (const text of bad) {
-      expect(() => roleFromFile(text)).toThrow('Not an ontology role file')
+      expect(() => roleFromFile(text)).toThrow('Not an ontology schema file')
     }
   })
 })
@@ -54,8 +60,8 @@ describe('role names', () => {
   test('roleFromFile-rejects-bad-names', () => {
     const good = JSON.parse(roleToFile(role))
     for (const name of ['', '__new__', 'x#y', '[[x]]']) {
-      const text = JSON.stringify({ ...good, role: { ...good.role, name } })
-      expect(() => roleFromFile(text)).toThrow('Not an ontology role file: ')
+      const text = JSON.stringify({ ...good, schema: { ...good.schema, name } })
+      expect(() => roleFromFile(text)).toThrow('Not an ontology schema file: ')
     }
   })
 })
