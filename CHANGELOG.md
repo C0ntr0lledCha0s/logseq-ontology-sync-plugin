@@ -2,7 +2,7 @@
 
 All notable changes to this plugin are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.3.0] - 2026-11-05
 
 ### Changed
 - Renamed to Ontology Schema Builder. Library presets are now called *roles* (CRM, Project Management), and what you build from them is a *schema*. Buttons, messages and the command read "schema" accordingly.

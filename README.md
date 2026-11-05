@@ -2,6 +2,8 @@
 
 Set up classes and properties in your Logseq DB graph without building them by hand. Start from ready-made Schema.org roles such as CRM or Project Management, keep only what you need, and import the result with Logseq's own importer.
 
+![Building a schema: picking the CRM and Project Management roles, jumping to Organization, switching off a property, then saving and exporting](docs/images/walkthrough.gif)
+
 **Works with:** Logseq desktop 2.0.x and DB graphs. File-based (markdown) graphs are not supported.
 
 ## Install

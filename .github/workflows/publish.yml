@@ -1,0 +1,66 @@
+name: Publish
+
+# Builds the plugin zip and creates the GitHub release when a vX.Y.Z tag is pushed.
+# The Logseq marketplace installs from the latest release's zip.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Build and release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check the tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $version" >&2
+            exit 1
+          fi
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v head="## [$version]" 'index($0, head) == 1 {on = 1; next} on && /^## \[/ {exit} on' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
+            echo "CHANGELOG.md has no section for $version" >&2
+            exit 1
+          fi
+
+      - name: Check
+        run: |
+          bun run typecheck
+          bun run lint
+          bun test
+
+      - name: Build
+        run: bun run build
+
+      - name: Zip the plugin
+        run: |
+          name=logseq-ontology-sync-plugin
+          cp -r dist "$RUNNER_TEMP/$name"
+          (cd "$RUNNER_TEMP" && zip -qr "$GITHUB_WORKSPACE/$name-$GITHUB_REF_NAME.zip" "$name")
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "logseq-ontology-sync-plugin-$GITHUB_REF_NAME.zip" \
+            --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
