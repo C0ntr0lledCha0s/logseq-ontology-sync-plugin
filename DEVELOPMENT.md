@@ -6,11 +6,11 @@ Notes for working on the Ontology Schema Builder plugin. The user-facing guide i
 
 The plugin is a **schema builder** for Logseq DB graphs (desktop 2.0.x only; file-based graphs are not supported).
 
-**Naming.** The interface calls a library preset a *role* (CRM, Project Management) and what the user builds from roles a *schema*. Before 0.3.0 the interface called the built thing a role. The code keeps the old names: `RoleDefinition`, `RoleStore` and `src/role/` hold a schema, and `Preset` is a role. Don't rename the plugin id (`logseq-ontology-sync`) or the command key (`open-role-builder`): users' installs and keybindings depend on them.
+**Naming.** The interface calls a library preset a *role* (CRM, Project Management) and what the user builds from roles a *schema*. The code uses older names: `RoleDefinition`, `RoleStore` and `src/role/` hold a schema, and `Preset` is a role. Don't rename the plugin id (`logseq-ontology-sync`) or the command key (`open-role-builder`): the marketplace listing, installs and keybindings depend on them.
 
 - **Library source.** On first use it resolves the latest release tag of [`C0ntr0lledCha0s/logseq-template-graph`](https://github.com/C0ntr0lledCha0s/logseq-template-graph) (v2.0.0 or later) from the GitHub releases API. It then downloads `library/schema-library.edn` and `library/schema-presets.edn` from raw.githubusercontent.com at that tag and caches them in plugin file storage. It never refetches on its own; **Update library** is the only refresh.
 - **Selection.** A schema is the union of the ticked presets plus the user's own add/remove overrides.
-- **Storage.** Schemas are saved on a hidden page named "Ontology Schemas". The legacy "Ontology Roles" page is still read (the new page wins on a name clash), and saving a schema removes its legacy copy. Schema files are JSON, format `ontology-schema` (key `schema`), version 1; legacy `ontology-role` files (key `role`) still import.
+- **Storage.** Schemas are saved on a hidden page named "Ontology Schemas", one JSON block each. Schema files are JSON, format `ontology-schema` (key `schema`), version 1.
 - **Export.** The plugin writes a trimmed `:graph-ontology` EDN file to Downloads. The user imports it with Logseq's **Import -> EDN to DB Graph**. The plugin never creates classes or properties through the plugin API. See [docs/plugin/native-edn-import-research.md](docs/plugin/native-edn-import-research.md) for why.
 - **Conflict check.** Before export, property type and cardinality are compared with the live graph; clashes block export.
 - **Re-import is additive.** Logseq never removes anything on re-import, so the UI warns before an export that drops previously exported items.
@@ -108,7 +108,14 @@ GitHub Actions runs on pushes and pull requests: typecheck, ESLint, Prettier che
 
 ## Releases
 
-Each release attaches `logseq-ontology-sync-plugin-vX.Y.Z.zip`, the packaged `dist/` folder. Record changes in [CHANGELOG.md](CHANGELOG.md).
+Releases are built by `.github/workflows/publish.yml` when a `vX.Y.Z` tag is pushed:
+
+1. Bump `version` in `package.json` and move the changelog's *Unreleased* entries under `## [X.Y.Z] - date` in [CHANGELOG.md](CHANGELOG.md). Merge that to `main`.
+2. Tag the merge commit and push the tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z" && git push origin vX.Y.Z`.
+
+The workflow refuses a tag that doesn't match `package.json` or has no changelog section. It runs typecheck, lint and tests, builds, zips `dist/` as `logseq-ontology-sync-plugin/` into `logseq-ontology-sync-plugin-vX.Y.Z.zip`, and creates the GitHub release with that zip and the changelog section as notes. The Logseq marketplace installs from the latest release's zip.
+
+The README walkthrough (`docs/images/walkthrough.gif`) is recorded with Playwright against the real builder and a fake Logseq API; re-record it when the builder's look changes noticeably.
 
 ## Background docs
 

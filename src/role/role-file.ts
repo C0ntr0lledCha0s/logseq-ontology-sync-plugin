@@ -2,8 +2,6 @@ import type { StoredRole } from '../logseq/role-store'
 import type { RoleDefinition } from './types'
 
 const FORMAT = 'ontology-schema'
-/** Files exported before the rename to schemas: `{format: 'ontology-role', role}`. */
-const LEGACY_FORMAT = 'ontology-role'
 const VERSION = 1
 const NOT_A_ROLE = 'Not an ontology schema file'
 
@@ -69,8 +67,8 @@ export function roleFromFile(text: string): RoleDefinition {
   } catch {
     throw new Error(NOT_A_ROLE)
   }
-  if (!isRecord(data) || data.version !== VERSION) throw new Error(NOT_A_ROLE)
-  if (data.format === FORMAT) return parseRoleDefinition(data.schema)
-  if (data.format === LEGACY_FORMAT) return parseRoleDefinition(data.role)
-  throw new Error(NOT_A_ROLE)
+  if (!isRecord(data) || data.format !== FORMAT || data.version !== VERSION) {
+    throw new Error(NOT_A_ROLE)
+  }
+  return parseRoleDefinition(data.schema)
 }

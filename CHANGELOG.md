@@ -2,12 +2,11 @@
 
 All notable changes to this plugin are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.3.0] - 2026-11-05
 
 ### Changed
 - Renamed to Ontology Schema Builder. Library presets are now called *roles* (CRM, Project Management), and what you build from them is a *schema*. Buttons, messages and the command read "schema" accordingly.
-- Schemas are saved on a new hidden "Ontology Schemas" page. Schemas saved on the old "Ontology Roles" page still load and move to the new page when saved.
-- Schema files use the format `ontology-schema`; files exported as `ontology-role` still import.
+- Schemas are saved on a hidden "Ontology Schemas" page, and schema files use the format `ontology-schema`.
 
 ### Fixed
 - A change that the builder cannot draw is undone and reported, instead of leaving the panel unresponsive until the change is reverted. A saved schema that cannot be drawn shows the error with a Close button.

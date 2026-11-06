@@ -1,0 +1,69 @@
+name: Publish
+
+# Builds the plugin zip and creates the GitHub release when a vX.Y.Z tag is pushed.
+# The Logseq marketplace installs from the latest release's zip.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Build and release
+    runs-on: ubuntu-latest
+
+    steps:
+      # Actions are pinned to commit SHAs: this job can write releases, which users install.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.6
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check the tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $version" >&2
+            exit 1
+          fi
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v head="## [$version]" 'index($0, head) == 1 {on = 1; next} on && /^## \[/ {exit} on' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
+            echo "CHANGELOG.md has no section for $version" >&2
+            exit 1
+          fi
+
+      - name: Check
+        run: |
+          bun run typecheck
+          bun run lint
+          bun test
+
+      - name: Build
+        run: bun run build
+
+      - name: Zip the plugin
+        run: |
+          name=logseq-ontology-sync-plugin
+          cp -r dist "$RUNNER_TEMP/$name"
+          (cd "$RUNNER_TEMP" && zip -qr "$GITHUB_WORKSPACE/$name-$GITHUB_REF_NAME.zip" "$name")
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "logseq-ontology-sync-plugin-$GITHUB_REF_NAME.zip" \
+            --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"

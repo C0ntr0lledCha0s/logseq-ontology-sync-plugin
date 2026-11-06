@@ -49,16 +49,9 @@ function fake(opts: { hideFails?: boolean } = {}) {
     },
     DB: { datascriptQuery: () => Promise.resolve([]) },
   } as unknown as LogseqLike
-  /** Seeds a page directly, as an older plugin version would have left it. */
-  const seed = (name: string, roles: StoredRole[]) =>
-    pages.set(name, {
-      uuid: `seed-${name}`,
-      blocks: roles.map((r) => ({ uuid: `b${++n}`, content: JSON.stringify(r) })),
-    })
   return {
     api,
     calls,
-    seed,
     blocks: (name = 'Ontology Schemas') => pages.get(name)?.blocks ?? [],
   }
 }
@@ -155,44 +148,5 @@ describe('RoleStore', () => {
     }
     await s.save(withExport)
     expect((await s.load())[0]).toEqual(withExport)
-  })
-
-  test('reads schemas saved on the legacy Ontology Roles page', async () => {
-    const f = fake()
-    f.seed('Ontology Roles', [role('Old')])
-    expect((await new RoleStore(f.api).load()).map((r) => r.name)).toEqual(['Old'])
-    expect(f.calls.createPage).toHaveLength(0)
-  })
-
-  test('a schema on the new page wins over a legacy one with its name', async () => {
-    const f = fake()
-    f.seed('Ontology Roles', [role('A', 'old'), role('B')])
-    f.seed('Ontology Schemas', [role('A', 'new')])
-    const loaded = await new RoleStore(f.api).load()
-    expect(loaded.map((r) => [r.name, r.libraryVersion])).toEqual([
-      ['A', 'new'],
-      ['B', 'v1'],
-    ])
-  })
-
-  test('saving a legacy schema moves it to the new page', async () => {
-    const f = fake()
-    f.seed('Ontology Roles', [role('Old'), role('Other')])
-    const s = new RoleStore(f.api)
-    await s.save(role('Old', 'v2'))
-    expect(f.blocks('Ontology Roles').map((b) => JSON.parse(b.content).name)).toEqual(['Other'])
-    expect(f.blocks().map((b) => JSON.parse(b.content).name)).toEqual(['Old'])
-    expect((await s.load()).map((r) => [r.name, r.libraryVersion])).toEqual([
-      ['Old', 'v2'],
-      ['Other', 'v1'],
-    ])
-  })
-
-  test('remove deletes the schema from both pages', async () => {
-    const f = fake()
-    f.seed('Ontology Roles', [role('A')])
-    f.seed('Ontology Schemas', [role('A')])
-    await new RoleStore(f.api).remove('A')
-    expect(await new RoleStore(f.api).load()).toEqual([])
   })
 })

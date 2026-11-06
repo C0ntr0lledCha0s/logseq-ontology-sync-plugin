@@ -27,17 +27,12 @@ describe('role files', () => {
     expect(roleFromFile(text)).toEqual(expected)
   })
 
-  test('imports files exported as roles by earlier versions', () => {
-    const { lastExport: _omit, ...definition } = role
-    const legacy = JSON.stringify({ format: 'ontology-role', version: 1, role: definition })
-    expect(roleFromFile(legacy)).toEqual(definition)
-  })
-
   test('rejects-bad-role-file', () => {
     const good = JSON.parse(roleToFile(role))
     const bad = [
       'not json',
       JSON.stringify({ ...good, format: 'other' }),
+      JSON.stringify({ format: 'ontology-role', version: 1, role: good.schema }),
       JSON.stringify({ ...good, version: 2 }),
       JSON.stringify({ ...good, schema: { name: 'x' } }),
       JSON.stringify({ ...good, schema: undefined }),
