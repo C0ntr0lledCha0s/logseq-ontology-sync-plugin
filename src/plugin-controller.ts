@@ -2,7 +2,7 @@
  * Plugin Controller
  *
  * Registers the toolbar button and command palette entry, and opens the
- * role builder main UI.
+ * schema builder main UI.
  */
 
 import { logger } from './utils/logger'
@@ -45,7 +45,7 @@ export class PluginController {
     logger.info('PluginController initialized')
   }
 
-  /** Show the role builder main UI. */
+  /** Show the schema builder main UI. */
   async openBuilder(): Promise<void> {
     logseq.setMainUIInlineStyle({
       position: 'fixed',

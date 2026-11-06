@@ -8,6 +8,10 @@ Set up classes and properties in your Logseq DB graph without building them by h
 
 ## Install
 
+In Logseq, open **Plugins** from the **…** menu, go to the **Marketplace** tab, search for **Ontology Schema Builder**, and click **Install**.
+
+**Manual install.** If you can't use the marketplace:
+
 1. Download `logseq-ontology-sync-plugin-vX.Y.Z.zip` from the [latest release](https://github.com/C0ntr0lledCha0s/logseq-ontology-sync-plugin/releases/latest).
 2. Unzip it.
 3. In Logseq, open **Settings -> Plugins**, turn on **Developer mode**, click **Load unpacked plugin**, and select the unzipped `logseq-ontology-sync-plugin` folder.
@@ -27,7 +31,7 @@ Open the builder from the toolbar icon, or run **Ontology: Open schema builder**
 
 ## Share a schema
 
-Click **Export schema file** to save the schema as a `.json` file. In another graph, click **Import schema file** to load it. Files exported as roles by earlier versions still import.
+Click **Export schema file** to save the schema as a `.json` file. In another graph, click **Import schema file** to load it.
 
 ## Before you export: conflicts
 
@@ -37,7 +41,6 @@ The plugin checks your schema against the properties already in your graph. If a
 
 - **Importing never removes anything.** If you untick items after you've already imported a schema, importing again won't delete them. Remove them by hand in Logseq. The plugin warns you when this applies.
 - **The schema library is downloaded from GitHub.** The first time you open the builder it needs an internet connection. After that it uses a saved copy. Click **Update library** to get the newest roles. The button highlights when a newer version is available.
-- **Upgrading from the role builder.** Earlier versions called a schema a *role*. Your saved roles appear as schemas, and each moves to the new hidden *Ontology Schemas* page the next time you save it.
 - **Nothing changes until you import.** The plugin only writes files. Your classes and properties change only when you import the EDN file in Logseq.
 
 ## Help and feedback
